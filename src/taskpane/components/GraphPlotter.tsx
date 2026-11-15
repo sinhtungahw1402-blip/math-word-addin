@@ -689,7 +689,7 @@ export const GraphPlotter: React.FC = () => {
 
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">\n`;
     svg += `  <defs>\n`;
-    svg += `    <marker id="axis-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">\n`;
+    svg += `    <marker id="axis-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto">\n`;
     svg += `      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#000000" />\n`;
     svg += `    </marker>\n`;
     svg += `    <clipPath id="plot-clip">\n`;

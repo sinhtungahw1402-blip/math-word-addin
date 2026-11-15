@@ -342,7 +342,7 @@ export const VariationTableGenerator: React.FC = () => {
 
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${totalHeight}" width="${totalWidth}" height="${totalHeight}">\n`;
     svg += `  <defs>\n`;
-    svg += `    <marker id="bbt-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">\n`;
+    svg += `    <marker id="bbt-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto">\n`;
     svg += `      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#000000" />\n`;
     svg += `    </marker>\n`;
     svg += `  </defs>\n\n`;
@@ -376,6 +376,7 @@ export const VariationTableGenerator: React.FC = () => {
     svg += `  <text x="${xRightX}" y="${lineY1 / 2}" ${numFont}>${formatMath(bbt.xRight)}</text>\n\n`;
 
     // Row 2: Y' Signs and Critical Points
+    const signFont = `font-family="'Times New Roman', 'Cambria Math', serif" font-size="18px" font-weight="bold" fill="#000000" text-anchor="middle" dominant-baseline="central"`;
     svg += `  <!-- Hàng đạo hàm y' -->\n`;
     const yPrimeMidY = (lineY1 + lineY2) / 2;
 
@@ -384,7 +385,7 @@ export const VariationTableGenerator: React.FC = () => {
       const x1 = idx === 0 ? headerWidth : pointXCoords[idx - 1];
       const x2 = idx === bbt.points.length ? totalWidth : pointXCoords[idx];
       const midX = (x1 + x2) / 2;
-      svg += `  <text x="${midX}" y="${yPrimeMidY}" ${numFont} font-size="17px">${inv.yPrimeSign}</text>\n`;
+      svg += `  <text x="${midX}" y="${yPrimeMidY}" ${signFont}>${inv.yPrimeSign}</text>\n`;
     });
 
     // Critical point signs / double bars in Row 2 & Row 3

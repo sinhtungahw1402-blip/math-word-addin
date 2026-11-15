@@ -130,6 +130,22 @@ export async function convertSvgToPngBase64(
         cleanSvg = cleanSvg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
       }
 
+      // Check for XML syntax errors using DOMParser if available
+      let xmlError = '';
+      if (typeof DOMParser !== 'undefined') {
+        try {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(cleanSvg, 'image/svg+xml');
+          const errNode = doc.querySelector('parsererror');
+          if (errNode) {
+            xmlError = errNode.textContent || 'Lỗi cú pháp XML';
+            console.error('[MathAddin] SVG XML syntax error:', xmlError);
+          }
+        } catch (pe) {
+          console.warn('[MathAddin] DOMParser warning:', pe);
+        }
+      }
+
       // Extract original viewBox dimensions or width/height
       let w = 320;
       let h = 230;
@@ -198,7 +214,11 @@ export async function convertSvgToPngBase64(
         URL.revokeObjectURL(url);
         // Fallback: encode via Data URI
         try {
-          const fallbackDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(cleanSvg);
+          // Use base64 data URI for better compatibility
+          const utf8Bytes = encodeURIComponent(cleanSvg).replace(/%([0-9A-F]{2})/g, (_, p1) =>
+            String.fromCharCode(parseInt(p1, 16))
+          );
+          const fallbackDataUrl = 'data:image/svg+xml;base64,' + btoa(utf8Bytes);
           const fallbackImg = new Image();
           fallbackImg.onload = () => {
             try {
@@ -208,7 +228,10 @@ export async function convertSvgToPngBase64(
               reject(err);
             }
           };
-          fallbackImg.onerror = (e) => reject(new Error(`Failed to render SVG: ${e}`));
+          fallbackImg.onerror = (e) => {
+            const detail = xmlError ? ` (Cú pháp SVG: ${xmlError})` : '';
+            reject(new Error(`Không thể vẽ SVG ra ảnh canvas: ${detail || e}`));
+          };
           fallbackImg.src = fallbackDataUrl;
         } catch (fallbackErr) {
           reject(fallbackErr);
