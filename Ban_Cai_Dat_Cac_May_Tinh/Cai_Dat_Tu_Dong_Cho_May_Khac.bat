@@ -14,7 +14,8 @@ echo [1/3] Dang thiet lap thu muc mang noi bo: %APP_DIR%
 net share MathWordAddin /delete >nul 2>&1
 net share MathWordAddin="%APP_DIR%" /grant:everyone,READ >nul 2>&1
 
-echo [2/3] Dang dang ky danh muc vao Microsoft Word...
+echo [2/3] Dang dang ky vao Microsoft Word...
+reg add "HKCU\Software\Microsoft\Office\16.0\WEF\Developer" /v "b7c25c38-89fa-47cb-bf9a-320a4b7ec991" /t REG_SZ /d "%APP_DIR%\manifest.xml" /f >nul 2>&1
 reg add "HKCU\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{b7c25c38-89fa-47cb-bf9a-320a4b7ec991}" /v "Id" /t REG_SZ /d "{b7c25c38-89fa-47cb-bf9a-320a4b7ec991}" /f >nul 2>&1
 reg add "HKCU\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{b7c25c38-89fa-47cb-bf9a-320a4b7ec991}" /v "Url" /t REG_SZ /d "\\localhost\MathWordAddin" /f >nul 2>&1
 reg add "HKCU\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{b7c25c38-89fa-47cb-bf9a-320a4b7ec991}" /v "Flags" /t REG_DWORD /d 1 /f >nul 2>&1
