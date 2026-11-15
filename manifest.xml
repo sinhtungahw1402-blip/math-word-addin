@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+  xsi:type="TaskPaneApp">
+
+  <!-- Add-in Metadata -->
+  <Id>b7c25c38-89fa-47cb-bf9a-320a4b7ec991</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Math Add-in Team</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Toán Học"/>
+  <Description DefaultValue="Bộ công cụ soạn thảo Toán học, Hình học, Bảng biến thiên và Đồ thị cho Microsoft Word"/>
+  <IconUrl DefaultValue="https://localhost:3000/assets/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://localhost:3000/assets/icon-80.png"/>
+  <SupportUrl DefaultValue="https://localhost:3000"/>
+  
+  <AppDomains>
+    <AppDomain>https://localhost:3000</AppDomain>
+  </AppDomains>
+
+  <!-- Hosts: Document (Microsoft Word) -->
+  <Hosts>
+    <Host Name="Document"/>
+  </Hosts>
+
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://localhost:3000/taskpane.html"/>
+  </DefaultSettings>
+
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="GetStarted.Title"/>
+            <Description resid="GetStarted.Description"/>
+            <LearnMoreUrl resid="GetStarted.LearnMore"/>
+          </GetStarted>
+          
+          <FunctionFile resid="Taskpane.Url"/>
+          
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <!-- Custom Tab: Toan Hoc -->
+            <CustomTab id="MathWordAddin.TabToanHoc">
+              <!-- Group 1: Formulas (Công thức) -->
+              <Group id="MathWordAddin.GroupFormulas">
+                <Label resid="Group.Formulas.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16"/>
+                  <bt:Image size="32" resid="Icon.32"/>
+                  <bt:Image size="80" resid="Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="MathWordAddin.BtnFormula">
+                  <Label resid="Btn.Formula.Label"/>
+                  <Supertip>
+                    <Title resid="Btn.Formula.Label"/>
+                    <Description resid="Btn.Formula.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>MathWordAddin.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Url.Formula"/>
+                  </Action>
+                </Control>
+              </Group>
+
+              <!-- Group 2: Plane Geometry (Hình học phẳng) -->
+              <Group id="MathWordAddin.GroupPlaneGeometry">
+                <Label resid="Group.PlaneGeometry.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16"/>
+                  <bt:Image size="32" resid="Icon.32"/>
+                  <bt:Image size="80" resid="Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="MathWordAddin.BtnPlaneGeometry">
+                  <Label resid="Btn.PlaneGeometry.Label"/>
+                  <Supertip>
+                    <Title resid="Btn.PlaneGeometry.Label"/>
+                    <Description resid="Btn.PlaneGeometry.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>MathWordAddin.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Url.PlaneGeometry"/>
+                  </Action>
+                </Control>
+              </Group>
+
+              <!-- Group 3: Space Geometry (Hình học không gian) -->
+              <Group id="MathWordAddin.GroupSpaceGeometry">
+                <Label resid="Group.SpaceGeometry.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16"/>
+                  <bt:Image size="32" resid="Icon.32"/>
+                  <bt:Image size="80" resid="Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="MathWordAddin.BtnSpaceGeometry">
+                  <Label resid="Btn.SpaceGeometry.Label"/>
+                  <Supertip>
+                    <Title resid="Btn.SpaceGeometry.Label"/>
+                    <Description resid="Btn.SpaceGeometry.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>MathWordAddin.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Url.SpaceGeometry"/>
+                  </Action>
+                </Control>
+              </Group>
+
+              <!-- Group 4: Tables and Graphs (Bảng và Đồ thị) -->
+              <Group id="MathWordAddin.GroupTablesGraphs">
+                <Label resid="Group.TablesGraphs.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16"/>
+                  <bt:Image size="32" resid="Icon.32"/>
+                  <bt:Image size="80" resid="Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="MathWordAddin.BtnVariationTable">
+                  <Label resid="Btn.VariationTable.Label"/>
+                  <Supertip>
+                    <Title resid="Btn.VariationTable.Label"/>
+                    <Description resid="Btn.VariationTable.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>MathWordAddin.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Url.VariationTable"/>
+                  </Action>
+                </Control>
+                <Control xsi:type="Button" id="MathWordAddin.BtnGraphPlotter">
+                  <Label resid="Btn.GraphPlotter.Label"/>
+                  <Supertip>
+                    <Title resid="Btn.GraphPlotter.Label"/>
+                    <Description resid="Btn.GraphPlotter.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>MathWordAddin.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Url.GraphPlotter"/>
+                  </Action>
+                </Control>
+              </Group>
+
+              <!-- Group 5: Tools (Công cụ) -->
+              <Group id="MathWordAddin.GroupTools">
+                <Label resid="Group.Tools.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16"/>
+                  <bt:Image size="32" resid="Icon.32"/>
+                  <bt:Image size="80" resid="Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="MathWordAddin.BtnShapeGallery">
+                  <Label resid="Btn.ShapeGallery.Label"/>
+                  <Supertip>
+                    <Title resid="Btn.ShapeGallery.Label"/>
+                    <Description resid="Btn.ShapeGallery.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>MathWordAddin.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Url.ShapeGallery"/>
+                  </Action>
+                </Control>
+                <Control xsi:type="Button" id="MathWordAddin.BtnToolsOverview">
+                  <Label resid="Btn.ToolsOverview.Label"/>
+                  <Supertip>
+                    <Title resid="Btn.ToolsOverview.Label"/>
+                    <Description resid="Btn.ToolsOverview.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>MathWordAddin.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Url.Taskpane"/>
+                  </Action>
+                </Control>
+              </Group>
+              <Label resid="Tab.ToanHoc.Label"/>
+            </CustomTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://localhost:3000/assets/icon-16.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://localhost:3000/assets/icon-32.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://localhost:3000/assets/icon-80.png"/>
+      </bt:Images>
+      
+      <bt:Urls>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/taskpane.html"/>
+        <bt:Url id="Url.Taskpane" DefaultValue="https://localhost:3000/taskpane.html"/>
+        <bt:Url id="Url.Formula" DefaultValue="https://localhost:3000/taskpane.html?view=formula"/>
+        <bt:Url id="Url.PlaneGeometry" DefaultValue="https://localhost:3000/taskpane.html?view=plane-geometry"/>
+        <bt:Url id="Url.SpaceGeometry" DefaultValue="https://localhost:3000/taskpane.html?view=space-geometry"/>
+        <bt:Url id="Url.VariationTable" DefaultValue="https://localhost:3000/taskpane.html?view=variation-table"/>
+        <bt:Url id="Url.GraphPlotter" DefaultValue="https://localhost:3000/taskpane.html?view=graph-plotter"/>
+        <bt:Url id="Url.ShapeGallery" DefaultValue="https://localhost:3000/taskpane.html?view=shape-gallery"/>
+        <bt:Url id="GetStarted.LearnMore" DefaultValue="https://localhost:3000/taskpane.html"/>
+      </bt:Urls>
+
+      <bt:ShortStrings>
+        <bt:String id="Tab.ToanHoc.Label" DefaultValue="Toán Học"/>
+        <bt:String id="Group.Formulas.Label" DefaultValue="Công thức"/>
+        <bt:String id="Group.PlaneGeometry.Label" DefaultValue="Hình học phẳng"/>
+        <bt:String id="Group.SpaceGeometry.Label" DefaultValue="Hình không gian"/>
+        <bt:String id="Group.TablesGraphs.Label" DefaultValue="Bảng &amp; Đồ thị"/>
+        <bt:String id="Group.Tools.Label" DefaultValue="Công cụ"/>
+        <bt:String id="Btn.Formula.Label" DefaultValue="Công thức"/>
+        <bt:String id="Btn.PlaneGeometry.Label" DefaultValue="Hình học phẳng"/>
+        <bt:String id="Btn.SpaceGeometry.Label" DefaultValue="Hình không gian"/>
+        <bt:String id="Btn.VariationTable.Label" DefaultValue="Bảng biến thiên"/>
+        <bt:String id="Btn.GraphPlotter.Label" DefaultValue="Đồ thị hàm số"/>
+        <bt:String id="Btn.ShapeGallery.Label" DefaultValue="Thư viện hình"/>
+        <bt:String id="Btn.ToolsOverview.Label" DefaultValue="Bảng điều khiển"/>
+        <bt:String id="GetStarted.Title" DefaultValue="Toán Học Word Add-in"/>
+      </bt:ShortStrings>
+
+      <bt:LongStrings>
+        <bt:String id="GetStarted.Description" DefaultValue="Mở Taskpane Toán Học để soạn thảo công thức, vẽ hình học phẳng/không gian, bảng biến thiên và đồ thị."/>
+        <bt:String id="Btn.Formula.Tooltip" DefaultValue="Mở công cụ soạn thảo công thức Toán học"/>
+        <bt:String id="Btn.PlaneGeometry.Tooltip" DefaultValue="Mở công cụ dựng hình học phẳng (tam giác, đường tròn, góc, đa giác)"/>
+        <bt:String id="Btn.SpaceGeometry.Tooltip" DefaultValue="Mở công cụ vẽ hình học không gian (chóp, lăng trụ, nón, trụ, cầu)"/>
+        <bt:String id="Btn.VariationTable.Tooltip" DefaultValue="Tạo bảng biến thiên xét dấu cho các hàm số toán THPT"/>
+        <bt:String id="Btn.GraphPlotter.Tooltip" DefaultValue="Vẽ đồ thị hàm số và chèn ảnh chất lượng cao vào Word"/>
+        <bt:String id="Btn.ShapeGallery.Tooltip" DefaultValue="Thư viện hình mẫu, ký hiệu toán học chuẩn chương trình"/>
+        <bt:String id="Btn.ToolsOverview.Tooltip" DefaultValue="Mở Taskpane tổng quan và kiểm tra kết nối Word"/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

@@ -1,0 +1,32 @@
+{
+  "name": "math-word-addin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Office Add-in for Microsoft Word: Math, Geometry, Variation Tables and Graphs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "manifest:prod": "node scripts/generate-manifest.cjs"
+  },
+  "dependencies": {
+    "@fluentui/react-components": "^9.54.0",
+    "@fluentui/react-icons": "^2.0.250",
+    "@types/katex": "^0.16.8",
+    "katex": "^0.19.1",
+    "mathlive": "^0.111.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.23.1"
+  },
+  "devDependencies": {
+    "@types/office-js": "^1.0.395",
+    "@types/react": "^18.3.2",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-basic-ssl": "^1.1.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11"
+  }
+}
