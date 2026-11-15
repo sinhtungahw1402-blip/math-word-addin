@@ -13,12 +13,12 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Toán Học"/>
   <Description DefaultValue="Bộ công cụ soạn thảo Toán học, Hình học, Bảng biến thiên và Đồ thị cho Microsoft Word"/>
-  <IconUrl DefaultValue="https://toan-word.netlify.app/assets/icon-32.png"/>
-  <HighResolutionIconUrl DefaultValue="https://toan-word.netlify.app/assets/icon-80.png"/>
-  <SupportUrl DefaultValue="https://toan-word.netlify.app"/>
+  <IconUrl DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/assets/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/assets/icon-80.png"/>
+  <SupportUrl DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin"/>
   
   <AppDomains>
-    <AppDomain>https://toan-word.netlify.app</AppDomain>
+    <AppDomain>https://sinhtungahw1402-blip.github.io/math-word-addin</AppDomain>
   </AppDomains>
 
   <!-- Hosts: Document (Microsoft Word) -->
@@ -27,7 +27,7 @@
   </Hosts>
 
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://toan-word.netlify.app/taskpane.html"/>
+    <SourceLocation DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html"/>
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
@@ -217,21 +217,21 @@
 
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16" DefaultValue="https://toan-word.netlify.app/assets/icon-16.png"/>
-        <bt:Image id="Icon.32" DefaultValue="https://toan-word.netlify.app/assets/icon-32.png"/>
-        <bt:Image id="Icon.80" DefaultValue="https://toan-word.netlify.app/assets/icon-80.png"/>
+        <bt:Image id="Icon.16" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/assets/icon-16.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/assets/icon-32.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/assets/icon-80.png"/>
       </bt:Images>
       
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://toan-word.netlify.app/taskpane.html"/>
-        <bt:Url id="Url.Taskpane" DefaultValue="https://toan-word.netlify.app/taskpane.html"/>
-        <bt:Url id="Url.Formula" DefaultValue="https://toan-word.netlify.app/taskpane.html?view=formula"/>
-        <bt:Url id="Url.PlaneGeometry" DefaultValue="https://toan-word.netlify.app/taskpane.html?view=plane-geometry"/>
-        <bt:Url id="Url.SpaceGeometry" DefaultValue="https://toan-word.netlify.app/taskpane.html?view=space-geometry"/>
-        <bt:Url id="Url.VariationTable" DefaultValue="https://toan-word.netlify.app/taskpane.html?view=variation-table"/>
-        <bt:Url id="Url.GraphPlotter" DefaultValue="https://toan-word.netlify.app/taskpane.html?view=graph-plotter"/>
-        <bt:Url id="Url.ShapeGallery" DefaultValue="https://toan-word.netlify.app/taskpane.html?view=shape-gallery"/>
-        <bt:Url id="GetStarted.LearnMore" DefaultValue="https://toan-word.netlify.app/taskpane.html"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html"/>
+        <bt:Url id="Url.Taskpane" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html"/>
+        <bt:Url id="Url.Formula" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html?view=formula"/>
+        <bt:Url id="Url.PlaneGeometry" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html?view=plane-geometry"/>
+        <bt:Url id="Url.SpaceGeometry" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html?view=space-geometry"/>
+        <bt:Url id="Url.VariationTable" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html?view=variation-table"/>
+        <bt:Url id="Url.GraphPlotter" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html?view=graph-plotter"/>
+        <bt:Url id="Url.ShapeGallery" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html?view=shape-gallery"/>
+        <bt:Url id="GetStarted.LearnMore" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html"/>
       </bt:Urls>
 
       <bt:ShortStrings>
