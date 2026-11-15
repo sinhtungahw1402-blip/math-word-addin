@@ -1,52 +1,36 @@
 @echo off
-chcp 65001 > nul
-setlocal enabledelayedexpansion
-
+title Cai dat Toan Hoc Word Add-in
+cls
 echo ====================================================
-echo   CÀI ĐẶT TỰ ĐỘNG ADD-IN TOÁN HỌC VÀO MICROSOFT WORD
+echo   CAI DAT TOAN HOC WORD ADD-IN CHO MAY TINH
 echo ====================================================
 echo.
 
-:: Kiểm tra quyền Administrator
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [THÔNG BÁO QUAN TRỌNG]
-    echo Vui lòng nhấp chuột phải vào file này và chọn:
-    echo    "Run as administrator" (Chạy với quyền quản trị viên)
-    echo để phần mềm tự động đăng ký vào Word!
-    echo.
-    pause
-    exit /b 1
-)
+pushd "%~dp0"
+set "APP_DIR=%CD%"
+popd
 
-set "FOLDER_PATH=%~dp0"
-:: Xóa dấu gạch chéo cuối nếu có
-if "%FOLDER_PATH:~-1%"=="\" set "FOLDER_PATH=%FOLDER_PATH:~0,-1%"
-
-echo [1/3] Đang tạo thư mục chia sẻ nội bộ...
+echo [1/3] Dang thiet lap thu muc mang noi bo: %APP_DIR%
 net share MathWordAddin /delete >nul 2>&1
-net share MathWordAddin="%FOLDER_PATH%" /grant:everyone,READ >nul 2>&1
+net share MathWordAddin="%APP_DIR%" /grant:everyone,READ >nul 2>&1
 
-echo [2/3] Đang đăng ký danh mục đáng tin cậy vào Microsoft Word...
-set "REG_KEY=HKCU\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{b7c25c38-89fa-47cb-bf9a-320a4b7ec991}"
-reg add "%REG_KEY%" /v "Id" /t REG_SZ /d "{b7c25c38-89fa-47cb-bf9a-320a4b7ec991}" /f >nul
-reg add "%REG_KEY%" /v "Url" /t REG_SZ /d "\\localhost\MathWordAddin" /f >nul
-reg add "%REG_KEY%" /v "Flags" /t REG_DWORD /d 1 /f >nul
+echo [2/3] Dang dang ky danh muc vao Microsoft Word...
+reg add "HKCU\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{b7c25c38-89fa-47cb-bf9a-320a4b7ec991}" /v "Id" /t REG_SZ /d "{b7c25c38-89fa-47cb-bf9a-320a4b7ec991}" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{b7c25c38-89fa-47cb-bf9a-320a4b7ec991}" /v "Url" /t REG_SZ /d "\\localhost\MathWordAddin" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{b7c25c38-89fa-47cb-bf9a-320a4b7ec991}" /v "Flags" /t REG_DWORD /d 1 /f >nul 2>&1
 
-echo [3/3] Đang làm mới bộ nhớ đệm Word...
+echo [3/3] Lam sach bo nho dem Word...
 if exist "%LOCALAPPDATA%\Microsoft\Office\16.0\Wef" (
-    del /q /s "%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\*" >nul 2>&1
+    rmdir /s /q "%LOCALAPPDATA%\Microsoft\Office\16.0\Wef" >nul 2>&1
 )
 
 echo.
 echo ====================================================
-echo ✅ CÀI ĐẶT THÀNH CÔNG 100%!
-echo.
-echo BÂY GIỜ BẠN CHỈ CẦN:
-echo 1. Mở phần mềm Microsoft Word.
-echo 2. Vào tab 'Insert' (Chèn) -> chọn 'My Add-ins' (Phần bổ trợ của tôi).
-echo 3. Bấm vào thẻ 'SHARED FOLDER' (Thư mục dùng chung).
-echo 4. Chọn 'Toán Học' và bấm 'Add' (Thêm).
+echo   HOAN TAT! BAY GIO BAN HAY LAM THEO 3 BUOC:
+echo ====================================================
+echo 1. Mo phan mem Microsoft Word.
+echo 2. Vao menu Insert (Chen) -> chon My Add-ins (Phan bo tro).
+echo 3. Chon the SHARED FOLDER (Thu muc dung chung) -> chon Toan Hoc va bam Add!
 echo ====================================================
 echo.
 pause
