@@ -1,0 +1,27 @@
+BƯỚC 1: Lấy file cài đặt mang sang máy tính khác
+Trên máy tính hiện tại của bạn, vào thư mục:
+👉 Ban_Cai_Dat_Cac_May_Tinh
+Sao chép file manifest.xml (dung lượng chỉ khoảng vài KB):
+Bạn có thể gửi file này qua Zalo, Email, Google Drive hoặc copy vào USB.
+BƯỚC 2: Thao tác trên máy tính mới (Chỉ làm 1 lần duy nhất - mất 1 phút)
+1. Lưu file vào máy tính mới:
+Tạo một thư mục bất kỳ trên máy tính mới, ví dụ: C:\TienIchToan (hoặc D:\OfficeAddins).
+Dán file manifest.xml vừa tải về vào trong thư mục đó.
+2. Đăng ký thư mục đáng tin cậy trong Word:
+Mở phần mềm Microsoft Word trên máy tính mới.
+Vào menu File (Tệp) -> chọn Options (Tùy chọn) ở góc dưới cùng bên trái.
+Chọn mục Trust Center (Trung tâm tin cậy) -> Bấm nút Trust Center Settings... (Cài đặt Trung tâm tin cậy...).
+Ở cột bên trái, bấm chọn Trusted Add-in Catalogs (Danh mục phần bổ trợ đáng tin cậy).
+Tại ô Catalog Url, nhập đường dẫn thư mục bạn vừa tạo ở trên (ví dụ: C:\TienIchToan) -> Bấm nút Add catalog (Thêm danh mục).
+Đánh dấu tích (✓) vào ô Show in Menu (Hiển thị trong menu) ở dòng vừa thêm.
+Bấm OK -> Bấm tiếp OK để đóng hộp thoại.
+Đóng hoàn toàn Microsoft Word lại và mở lại.
+3. Bật thanh công cụ "Toán Học":
+Trên thanh công cụ Word, vào tab Insert (Chèn) -> Bấm vào nút My Add-ins (hoặc biểu tượng Add-ins / Get Add-ins).
+Trong bảng hiện ra, chuyển sang thẻ SHARED FOLDER (Thư mục dùng chung).
+Bạn sẽ thấy ngay tiện ích mang tên Toán Học.
+Bấm chọn Toán Học rồi bấm nút Add (Thêm).
+🎉 KẾT QUẢ:
+Tab Toán Học sẽ xuất hiện vĩnh viễn trên thanh Ribbon của Word trên máy tính đó.
+Mọi tính năng: Soạn công thức MathType, dựng hình học phẳng 2D, 3 đường conic, hình học không gian 3D, bảng biến thiên và vẽ đồ thị đều chạy mượt mà qua mạng Internet.
+Tự động đồng bộ: Sau này bất cứ khi nào bạn nâng cấp tính năng mới trên máy của bạn và đẩy lên GitHub, máy tính kia chỉ cần mở Word là tự động nhận được các tính năng mới nhất mà không cần phải cài đặt lại gì cả!

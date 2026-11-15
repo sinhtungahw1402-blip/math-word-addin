@@ -26,6 +26,12 @@ import {
 import { insertSvgAtCursor } from '../services/wordService';
 import {
   Point,
+  AngleMarkType,
+  SegmentMarkType,
+  ANGLE_MARK_OPTIONS,
+  SEGMENT_MARK_OPTIONS,
+  renderAngleMark,
+  renderSegmentMark,
   getTriPyramidVisibility,
   getQuadPyramidVisibility,
   getPrismVisibility,
@@ -139,6 +145,23 @@ export const SpaceGeometryEditor: React.FC = () => {
 
   const [status, setStatus] = useState<string>('');
 
+  // Angle & Segment Custom Marking State for 3D
+  const [angleMarks3D, setAngleMarks3D] = useState<Record<string, AngleMarkType>>({});
+  const [segmentMarks3D, setSegmentMarks3D] = useState<Record<string, SegmentMarkType>>({});
+
+  const handleAngleMarkChange3D = (vertexId: string, mark: AngleMarkType) => {
+    setAngleMarks3D(prev => ({ ...prev, [vertexId]: mark }));
+  };
+
+  const handleSegmentMarkChange3D = (segId: string, mark: SegmentMarkType) => {
+    setSegmentMarks3D(prev => ({ ...prev, [segId]: mark }));
+  };
+
+  const handleClearMarks3D = () => {
+    setAngleMarks3D({});
+    setSegmentMarks3D({});
+  };
+
   // Interactive Drag & Drop State for Vertices
   const [customPoints, setCustomPoints] = useState<Record<string, Point>>({});
   const [activeDrag, setActiveDrag] = useState<string | null>(null);
@@ -206,6 +229,133 @@ export const SpaceGeometryEditor: React.FC = () => {
     setCustomPoints({});
   };
 
+  const getActiveElements3D = () => {
+    if (category === 'pyramids') {
+      if (pyramidType === 'pyramid_quad_reg' || pyramidType === 'pyramid_quad_sa') {
+        return {
+          angleVerts: [
+            { id: 'S', label: `${lblS}` },
+            { id: 'A', label: `${lblA}` },
+            { id: 'B', label: `${lblB}` },
+            { id: 'C', label: `${lblC}` },
+            { id: 'D', label: `${lblD}` }
+          ],
+          baseSegments: [
+            { id: 'AB', label: `${lblA}${lblB}` },
+            { id: 'BC', label: `${lblB}${lblC}` },
+            { id: 'CD', label: `${lblC}${lblD}` },
+            { id: 'DA', label: `${lblD}${lblA}` }
+          ],
+          lateralSegments: [
+            { id: 'SA', label: `${lblS}${lblA}` },
+            { id: 'SB', label: `${lblS}${lblB}` },
+            { id: 'SC', label: `${lblS}${lblC}` },
+            { id: 'SD', label: `${lblS}${lblD}` }
+          ]
+        };
+      }
+      if (pyramidType === 'tetrahedron_ortho') {
+        return {
+          angleVerts: [
+            { id: 'O_AB', label: 'O (AOB)' },
+            { id: 'O_AC', label: 'O (AOC)' },
+            { id: 'O_BC', label: 'O (BOC)' }
+          ],
+          baseSegments: [
+            { id: 'AB', label: `${lblA}${lblB}` },
+            { id: 'BC', label: `${lblB}${lblC}` },
+            { id: 'CA', label: `${lblC}${lblA}` }
+          ],
+          lateralSegments: [
+            { id: 'OA', label: 'OA' },
+            { id: 'OB', label: 'OB' },
+            { id: 'OC', label: 'OC' }
+          ]
+        };
+      }
+      return {
+        angleVerts: [
+          { id: 'S', label: `${lblS}` },
+          { id: 'A', label: `${lblA}` },
+          { id: 'B', label: `${lblB}` },
+          { id: 'C', label: `${lblC}` }
+        ],
+        baseSegments: [
+          { id: 'AB', label: `${lblA}${lblB}` },
+          { id: 'BC', label: `${lblB}${lblC}` },
+          { id: 'CA', label: `${lblC}${lblA}` }
+        ],
+        lateralSegments: [
+          { id: 'SA', label: `${lblS}${lblA}` },
+          { id: 'SB', label: `${lblS}${lblB}` },
+          { id: 'SC', label: `${lblS}${lblC}` }
+        ]
+      };
+    }
+
+    if (category === 'prisms') {
+      if (prismType === 'prism_rect' || prismType === 'cube') {
+        return {
+          angleVerts: [
+            { id: 'A', label: `${lblA}` },
+            { id: 'B', label: `${lblB}` },
+            { id: 'C', label: `${lblC}` },
+            { id: 'D', label: `${lblD}` }
+          ],
+          baseSegments: [
+            { id: 'AB', label: `${lblA}${lblB}` },
+            { id: 'BC', label: `${lblB}${lblC}` },
+            { id: 'CD', label: `${lblC}${lblD}` },
+            { id: 'DA', label: `${lblD}${lblA}` }
+          ],
+          lateralSegments: [
+            { id: 'AA1', label: `${lblA}${lblA}'` },
+            { id: 'BB1', label: `${lblB}${lblB}'` },
+            { id: 'CC1', label: `${lblC}${lblC}'` },
+            { id: 'DD1', label: `${lblD}${lblD}'` }
+          ]
+        };
+      }
+      return {
+        angleVerts: [
+          { id: 'A', label: `${lblA}` },
+          { id: 'B', label: `${lblB}` },
+          { id: 'C', label: `${lblC}` }
+        ],
+        baseSegments: [
+          { id: 'AB', label: `${lblA}${lblB}` },
+          { id: 'BC', label: `${lblB}${lblC}` },
+          { id: 'CA', label: `${lblC}${lblA}` }
+        ],
+        lateralSegments: [
+          { id: 'AA1', label: `${lblA}${lblA}'` },
+          { id: 'BB1', label: `${lblB}${lblB}'` },
+          { id: 'CC1', label: `${lblC}${lblC}'` }
+        ]
+      };
+    }
+
+    if (category === 'solids_rev') {
+      if (solidRevType === 'cone') {
+        return {
+          angleVerts: [
+            { id: 'S', label: `${lblS}` },
+            { id: 'O', label: 'O' }
+          ],
+          baseSegments: [
+            { id: 'OA', label: 'R (OA)' }
+          ],
+          lateralSegments: [
+            { id: 'SA', label: 'l (SA)' }
+          ]
+        };
+      }
+      return { angleVerts: [], baseSegments: [], lateralSegments: [] };
+    }
+
+    return { angleVerts: [], baseSegments: [], lateralSegments: [] };
+  };
+
   // 3D Perspective Right-Angle Symbol Helper
   const get3DRightAngle = (
     V: Point,
@@ -251,6 +401,90 @@ export const SpaceGeometryEditor: React.FC = () => {
     let caption = '';
     let draggableVertices: DraggableVertex3D[] = [];
 
+    const renderUserMarks3D = (
+      shapeKind: 'tri_pyramid' | 'quad_pyramid' | 'tetra_ortho' | 'tri_prism' | 'quad_prism' | 'cone',
+      pts: Record<string, Point>
+    ): string => {
+      let marks = '';
+      if (shapeKind === 'tri_pyramid') {
+        const { S, A, B, C } = pts;
+        if (angleMarks3D['A'] && angleMarks3D['A'] !== 'none') marks += renderAngleMark(A, B, C, angleMarks3D['A'], accentColor);
+        if (angleMarks3D['B'] && angleMarks3D['B'] !== 'none') marks += renderAngleMark(B, A, C, angleMarks3D['B'], accentColor);
+        if (angleMarks3D['C'] && angleMarks3D['C'] !== 'none') marks += renderAngleMark(C, A, B, angleMarks3D['C'], accentColor);
+        if (angleMarks3D['S'] && angleMarks3D['S'] !== 'none') marks += renderAngleMark(S, A, B, angleMarks3D['S'], accentColor);
+
+        if (segmentMarks3D['AB'] && segmentMarks3D['AB'] !== 'none') marks += renderSegmentMark(A, B, segmentMarks3D['AB'], accentColor);
+        if (segmentMarks3D['BC'] && segmentMarks3D['BC'] !== 'none') marks += renderSegmentMark(B, C, segmentMarks3D['BC'], accentColor);
+        if (segmentMarks3D['CA'] && segmentMarks3D['CA'] !== 'none') marks += renderSegmentMark(C, A, segmentMarks3D['CA'], accentColor);
+        if (segmentMarks3D['SA'] && segmentMarks3D['SA'] !== 'none') marks += renderSegmentMark(S, A, segmentMarks3D['SA'], accentColor);
+        if (segmentMarks3D['SB'] && segmentMarks3D['SB'] !== 'none') marks += renderSegmentMark(S, B, segmentMarks3D['SB'], accentColor);
+        if (segmentMarks3D['SC'] && segmentMarks3D['SC'] !== 'none') marks += renderSegmentMark(S, C, segmentMarks3D['SC'], accentColor);
+      } else if (shapeKind === 'quad_pyramid') {
+        const { S, A, B, C, D } = pts;
+        if (angleMarks3D['A'] && angleMarks3D['A'] !== 'none') marks += renderAngleMark(A, B, D, angleMarks3D['A'], accentColor);
+        if (angleMarks3D['B'] && angleMarks3D['B'] !== 'none') marks += renderAngleMark(B, A, C, angleMarks3D['B'], accentColor);
+        if (angleMarks3D['C'] && angleMarks3D['C'] !== 'none') marks += renderAngleMark(C, B, D, angleMarks3D['C'], accentColor);
+        if (angleMarks3D['D'] && angleMarks3D['D'] !== 'none') marks += renderAngleMark(D, C, A, angleMarks3D['D'], accentColor);
+        if (angleMarks3D['S'] && angleMarks3D['S'] !== 'none') marks += renderAngleMark(S, A, B, angleMarks3D['S'], accentColor);
+
+        if (segmentMarks3D['AB'] && segmentMarks3D['AB'] !== 'none') marks += renderSegmentMark(A, B, segmentMarks3D['AB'], accentColor);
+        if (segmentMarks3D['BC'] && segmentMarks3D['BC'] !== 'none') marks += renderSegmentMark(B, C, segmentMarks3D['BC'], accentColor);
+        if (segmentMarks3D['CD'] && segmentMarks3D['CD'] !== 'none') marks += renderSegmentMark(C, D, segmentMarks3D['CD'], accentColor);
+        if (segmentMarks3D['DA'] && segmentMarks3D['DA'] !== 'none') marks += renderSegmentMark(D, A, segmentMarks3D['DA'], accentColor);
+        if (segmentMarks3D['SA'] && segmentMarks3D['SA'] !== 'none') marks += renderSegmentMark(S, A, segmentMarks3D['SA'], accentColor);
+        if (segmentMarks3D['SB'] && segmentMarks3D['SB'] !== 'none') marks += renderSegmentMark(S, B, segmentMarks3D['SB'], accentColor);
+        if (segmentMarks3D['SC'] && segmentMarks3D['SC'] !== 'none') marks += renderSegmentMark(S, C, segmentMarks3D['SC'], accentColor);
+        if (segmentMarks3D['SD'] && segmentMarks3D['SD'] !== 'none') marks += renderSegmentMark(S, D, segmentMarks3D['SD'], accentColor);
+      } else if (shapeKind === 'tetra_ortho') {
+        const { O, A, B, C } = pts;
+        if (angleMarks3D['O_AB'] && angleMarks3D['O_AB'] !== 'none') marks += renderAngleMark(O, A, B, angleMarks3D['O_AB'], accentColor);
+        if (angleMarks3D['O_AC'] && angleMarks3D['O_AC'] !== 'none') marks += renderAngleMark(O, A, C, angleMarks3D['O_AC'], accentColor);
+        if (angleMarks3D['O_BC'] && angleMarks3D['O_BC'] !== 'none') marks += renderAngleMark(O, B, C, angleMarks3D['O_BC'], accentColor);
+
+        if (segmentMarks3D['OA'] && segmentMarks3D['OA'] !== 'none') marks += renderSegmentMark(O, A, segmentMarks3D['OA'], accentColor);
+        if (segmentMarks3D['OB'] && segmentMarks3D['OB'] !== 'none') marks += renderSegmentMark(O, B, segmentMarks3D['OB'], accentColor);
+        if (segmentMarks3D['OC'] && segmentMarks3D['OC'] !== 'none') marks += renderSegmentMark(O, C, segmentMarks3D['OC'], accentColor);
+        if (segmentMarks3D['AB'] && segmentMarks3D['AB'] !== 'none') marks += renderSegmentMark(A, B, segmentMarks3D['AB'], accentColor);
+        if (segmentMarks3D['BC'] && segmentMarks3D['BC'] !== 'none') marks += renderSegmentMark(B, C, segmentMarks3D['BC'], accentColor);
+        if (segmentMarks3D['CA'] && segmentMarks3D['CA'] !== 'none') marks += renderSegmentMark(C, A, segmentMarks3D['CA'], accentColor);
+      } else if (shapeKind === 'tri_prism') {
+        const { A, B, C, At, Bt, Ct } = pts;
+        if (angleMarks3D['A'] && angleMarks3D['A'] !== 'none') marks += renderAngleMark(A, B, C, angleMarks3D['A'], accentColor);
+        if (angleMarks3D['B'] && angleMarks3D['B'] !== 'none') marks += renderAngleMark(B, A, C, angleMarks3D['B'], accentColor);
+        if (angleMarks3D['C'] && angleMarks3D['C'] !== 'none') marks += renderAngleMark(C, A, B, angleMarks3D['C'], accentColor);
+
+        if (segmentMarks3D['AB'] && segmentMarks3D['AB'] !== 'none') marks += renderSegmentMark(A, B, segmentMarks3D['AB'], accentColor);
+        if (segmentMarks3D['BC'] && segmentMarks3D['BC'] !== 'none') marks += renderSegmentMark(B, C, segmentMarks3D['BC'], accentColor);
+        if (segmentMarks3D['CA'] && segmentMarks3D['CA'] !== 'none') marks += renderSegmentMark(C, A, segmentMarks3D['CA'], accentColor);
+        if (segmentMarks3D['AA1'] && segmentMarks3D['AA1'] !== 'none') marks += renderSegmentMark(A, At, segmentMarks3D['AA1'], accentColor);
+        if (segmentMarks3D['BB1'] && segmentMarks3D['BB1'] !== 'none') marks += renderSegmentMark(B, Bt, segmentMarks3D['BB1'], accentColor);
+        if (segmentMarks3D['CC1'] && segmentMarks3D['CC1'] !== 'none') marks += renderSegmentMark(C, Ct, segmentMarks3D['CC1'], accentColor);
+      } else if (shapeKind === 'quad_prism') {
+        const { A, B, C, D, At, Bt, Ct, Dt } = pts;
+        if (angleMarks3D['A'] && angleMarks3D['A'] !== 'none') marks += renderAngleMark(A, B, D, angleMarks3D['A'], accentColor);
+        if (angleMarks3D['B'] && angleMarks3D['B'] !== 'none') marks += renderAngleMark(B, A, C, angleMarks3D['B'], accentColor);
+        if (angleMarks3D['C'] && angleMarks3D['C'] !== 'none') marks += renderAngleMark(C, B, D, angleMarks3D['C'], accentColor);
+        if (angleMarks3D['D'] && angleMarks3D['D'] !== 'none') marks += renderAngleMark(D, C, A, angleMarks3D['D'], accentColor);
+
+        if (segmentMarks3D['AB'] && segmentMarks3D['AB'] !== 'none') marks += renderSegmentMark(A, B, segmentMarks3D['AB'], accentColor);
+        if (segmentMarks3D['BC'] && segmentMarks3D['BC'] !== 'none') marks += renderSegmentMark(B, C, segmentMarks3D['BC'], accentColor);
+        if (segmentMarks3D['CD'] && segmentMarks3D['CD'] !== 'none') marks += renderSegmentMark(C, D, segmentMarks3D['CD'], accentColor);
+        if (segmentMarks3D['DA'] && segmentMarks3D['DA'] !== 'none') marks += renderSegmentMark(D, A, segmentMarks3D['DA'], accentColor);
+        if (segmentMarks3D['AA1'] && segmentMarks3D['AA1'] !== 'none') marks += renderSegmentMark(A, At, segmentMarks3D['AA1'], accentColor);
+        if (segmentMarks3D['BB1'] && segmentMarks3D['BB1'] !== 'none') marks += renderSegmentMark(B, Bt, segmentMarks3D['BB1'], accentColor);
+        if (segmentMarks3D['CC1'] && segmentMarks3D['CC1'] !== 'none') marks += renderSegmentMark(C, Ct, segmentMarks3D['CC1'], accentColor);
+        if (segmentMarks3D['DD1'] && segmentMarks3D['DD1'] !== 'none') marks += renderSegmentMark(D, Dt, segmentMarks3D['DD1'], accentColor);
+      } else if (shapeKind === 'cone') {
+        const { S, O, A } = pts;
+        const B = { x: 2 * O.x - A.x, y: A.y };
+        if (angleMarks3D['S'] && angleMarks3D['S'] !== 'none') marks += renderAngleMark(S, A, B, angleMarks3D['S'], accentColor);
+        if (angleMarks3D['O'] && angleMarks3D['O'] !== 'none') marks += renderAngleMark(O, S, A, angleMarks3D['O'], accentColor);
+        if (segmentMarks3D['SA'] && segmentMarks3D['SA'] !== 'none') marks += renderSegmentMark(S, A, segmentMarks3D['SA'], accentColor);
+        if (segmentMarks3D['OA'] && segmentMarks3D['OA'] !== 'none') marks += renderSegmentMark(O, A, segmentMarks3D['OA'], accentColor);
+      }
+      return marks;
+    };
+
     // ==========================================
     // 1. KHỐI CHÓP (PYRAMIDS)
     // ==========================================
@@ -294,6 +528,7 @@ export const SpaceGeometryEditor: React.FC = () => {
             <!-- Trọng tâm O -->
             <circle cx="${O.x.toFixed(1)}" cy="${O.y.toFixed(1)}" r="2.5" fill="${accentColor}" />
             <text x="${(O.x + 5).toFixed(1)}" y="${(O.y + 4).toFixed(1)}" font-size="11" fill="${accentColor}">O</text>
+            ${renderUserMarks3D('tri_pyramid', { S, A, B, C })}
           `;
 
           draggableVertices = [
@@ -335,6 +570,7 @@ export const SpaceGeometryEditor: React.FC = () => {
             <line x1="${S.x.toFixed(1)}" y1="${S.y.toFixed(1)}" x2="${C.x.toFixed(1)}" y2="${C.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${width('SC')}" ${dash('SC')} />
             ${showRightAngles ? get3DRightAngle(A, S, B, 11, accentColor) : ''}
             ${showRightAngles ? get3DRightAngle(A, S, C, 11, accentColor) : ''}
+            ${renderUserMarks3D('tri_pyramid', { S, A, B, C })}
           `;
 
           draggableVertices = [
@@ -377,6 +613,7 @@ export const SpaceGeometryEditor: React.FC = () => {
             ${showRightAngles ? get3DRightAngle(H, S, B, 9, accentColor) : ''}
             <circle cx="${H.x.toFixed(1)}" cy="${H.y.toFixed(1)}" r="2.5" fill="${accentColor}" />
             <text x="${(H.x - 12).toFixed(1)}" y="${(H.y + 12).toFixed(1)}" font-size="11" fill="${accentColor}">H</text>
+            ${renderUserMarks3D('tri_pyramid', { S, A, B, C })}
           `;
 
           draggableVertices = [
@@ -432,6 +669,7 @@ export const SpaceGeometryEditor: React.FC = () => {
             <line x1="${S.x.toFixed(1)}" y1="${S.y.toFixed(1)}" x2="${D.x.toFixed(1)}" y2="${D.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${widthQ('SD')}" ${dashQ('SD')} />
             <circle cx="${O.x.toFixed(1)}" cy="${O.y.toFixed(1)}" r="2.5" fill="${accentColor}" />
             <text x="${(O.x + 5).toFixed(1)}" y="${(O.y + 4).toFixed(1)}" font-size="11" fill="${accentColor}">O</text>
+            ${renderUserMarks3D('quad_pyramid', { S, A, B, C, D })}
           `;
 
           draggableVertices = [
@@ -478,6 +716,7 @@ export const SpaceGeometryEditor: React.FC = () => {
             <line x1="${S.x.toFixed(1)}" y1="${S.y.toFixed(1)}" x2="${D.x.toFixed(1)}" y2="${D.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${widthQ('SD')}" ${dashQ('SD')} />
             ${showRightAngles ? get3DRightAngle(A, S, B, 10, accentColor) : ''}
             ${showRightAngles ? get3DRightAngle(A, S, D, 10, accentColor) : ''}
+            ${renderUserMarks3D('quad_pyramid', { S, A, B, C, D })}
           `;
 
           draggableVertices = [
@@ -519,6 +758,7 @@ export const SpaceGeometryEditor: React.FC = () => {
             <line x1="${A.x.toFixed(1)}" y1="${A.y.toFixed(1)}" x2="${B.x.toFixed(1)}" y2="${B.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${width('SB')}" ${dash('SB')} />
             <line x1="${B.x.toFixed(1)}" y1="${B.y.toFixed(1)}" x2="${C.x.toFixed(1)}" y2="${C.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${width('BC')}" ${dash('BC')} />
             <line x1="${A.x.toFixed(1)}" y1="${A.y.toFixed(1)}" x2="${C.x.toFixed(1)}" y2="${C.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${width('SC')}" ${dash('SC')} />
+            ${renderUserMarks3D('tetra_ortho', { O, A, B, C })}
           `;
 
           draggableVertices = [
@@ -609,6 +849,7 @@ export const SpaceGeometryEditor: React.FC = () => {
             <line x1="${A.x.toFixed(1)}" y1="${A.y.toFixed(1)}" x2="${At.x.toFixed(1)}" y2="${At.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${widthL(0)}" ${dashL(0)} />
             <line x1="${B.x.toFixed(1)}" y1="${B.y.toFixed(1)}" x2="${Bt.x.toFixed(1)}" y2="${Bt.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${widthL(1)}" ${dashL(1)} />
             <line x1="${C.x.toFixed(1)}" y1="${C.y.toFixed(1)}" x2="${Ct.x.toFixed(1)}" y2="${Ct.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${widthL(2)}" ${dashL(2)} />
+            ${renderUserMarks3D('tri_prism', { A, B, C, At, Bt, Ct })}
           `;
 
           draggableVertices = [
@@ -667,6 +908,7 @@ export const SpaceGeometryEditor: React.FC = () => {
             <line x1="${C.x.toFixed(1)}" y1="${C.y.toFixed(1)}" x2="${Ct.x.toFixed(1)}" y2="${Ct.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${widthL(2)}" ${dashL(2)} />
             <circle cx="${H.x.toFixed(1)}" cy="${H.y.toFixed(1)}" r="2.5" fill="${accentColor}" />
             <text x="${(H.x + 4).toFixed(1)}" y="${(H.y + 12).toFixed(1)}" font-size="11" fill="${accentColor}">H</text>
+            ${renderUserMarks3D('tri_prism', { A, B, C, At, Bt, Ct })}
           `;
 
           draggableVertices = [
@@ -718,6 +960,7 @@ export const SpaceGeometryEditor: React.FC = () => {
             <line x1="${B.x.toFixed(1)}" y1="${B.y.toFixed(1)}" x2="${Bt.x.toFixed(1)}" y2="${Bt.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${widthL(1)}" ${dashL(1)} />
             <line x1="${C.x.toFixed(1)}" y1="${C.y.toFixed(1)}" x2="${Ct.x.toFixed(1)}" y2="${Ct.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${widthL(2)}" ${dashL(2)} />
             <line x1="${D.x.toFixed(1)}" y1="${D.y.toFixed(1)}" x2="${Dt.x.toFixed(1)}" y2="${Dt.y.toFixed(1)}" stroke="${strokeColor}" stroke-width="${widthL(3)}" ${dashL(3)} />
+            ${renderUserMarks3D('quad_prism', { A, B, C, D, At, Bt, Ct, Dt })}
           `;
 
           draggableVertices = [
@@ -771,6 +1014,7 @@ export const SpaceGeometryEditor: React.FC = () => {
             <line x1="${S.x}" y1="${S.y.toFixed(1)}" x2="${(O.x + currentRx).toFixed(1)}" y2="${O.y}" stroke="${strokeColor}" stroke-width="2" />
             <text x="${(O.x + A.x) / 2}" y="${O.y - 4}" font-size="11" fill="${auxColor}">R</text>
             <text x="${O.x + 5}" y="${(S.y + O.y) / 2}" font-size="11" fill="${accentColor}">h</text>
+            ${renderUserMarks3D('cone', { S, O, A })}
           `;
 
           draggableVertices = [
@@ -905,6 +1149,7 @@ export const SpaceGeometryEditor: React.FC = () => {
   };
 
   const scene = getSceneData();
+  const activeElements3D = getActiveElements3D();
 
   // Clean SVG for Word Document insertion (without interactive rings)
   const getCleanSvgString = () => {
@@ -942,6 +1187,8 @@ export const SpaceGeometryEditor: React.FC = () => {
     setLblC('C');
     setLblD('D');
     setCustomPoints({});
+    setAngleMarks3D({});
+    setSegmentMarks3D({});
   };
 
   return (
@@ -1179,6 +1426,126 @@ export const SpaceGeometryEditor: React.FC = () => {
             label="Ký hiệu vuông góc 3D"
           />
         </div>
+
+        {/* Custom 3D Angle & Segment Markings */}
+        {(activeElements3D.angleVerts.length > 0 || activeElements3D.baseSegments.length > 0) && (
+          <div style={{
+            backgroundColor: '#f8fafc',
+            border: '1px solid #cbd5e1',
+            borderRadius: '8px',
+            padding: '12px',
+            marginTop: '10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text weight="semibold" size={300} style={{ color: '#0f6cbd' }}>
+                📐 Ký hiệu góc &amp; Cạnh bằng nhau (Tùy chỉnh 3D)
+              </Text>
+              {(Object.values(angleMarks3D).some(v => v && v !== 'none') || Object.values(segmentMarks3D).some(v => v && v !== 'none')) && (
+                <Button
+                  size="small"
+                  appearance="subtle"
+                  icon={<ArrowReset20Regular />}
+                  onClick={handleClearMarks3D}
+                >
+                  Xóa tất cả ký hiệu
+                </Button>
+              )}
+            </div>
+
+            {/* 3D Angle Selectors */}
+            {activeElements3D.angleVerts.length > 0 && (
+              <div>
+                <Text weight="medium" size={200} style={{ color: '#475569', marginBottom: '4px', display: 'block' }}>
+                  Ký hiệu góc tại các đỉnh:
+                </Text>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: activeElements3D.angleVerts.length > 4 ? 'repeat(5, 1fr)' : activeElements3D.angleVerts.length === 4 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
+                  gap: '6px'
+                }}>
+                  {activeElements3D.angleVerts.map(v => (
+                    <Field key={v.id} label={`Đỉnh ${v.label}:`}>
+                      <Select
+                        size="small"
+                        value={angleMarks3D[v.id] || 'none'}
+                        onChange={(_, d) => handleAngleMarkChange3D(v.id, d.value as AngleMarkType)}
+                      >
+                        {ANGLE_MARK_OPTIONS.map(opt => (
+                          <option key={opt.key} value={opt.key}>
+                            {opt.iconLabel} {opt.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 3D Segment Selectors - Base Edges */}
+            {activeElements3D.baseSegments.length > 0 && (
+              <div>
+                <Text weight="medium" size={200} style={{ color: '#475569', marginBottom: '4px', display: 'block' }}>
+                  Ký hiệu cạnh đáy (thể hiện cạnh bằng nhau):
+                </Text>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: activeElements3D.baseSegments.length > 4 ? 'repeat(5, 1fr)' : activeElements3D.baseSegments.length === 4 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
+                  gap: '6px'
+                }}>
+                  {activeElements3D.baseSegments.map(seg => (
+                    <Field key={seg.id} label={`Cạnh ${seg.label}:`}>
+                      <Select
+                        size="small"
+                        value={segmentMarks3D[seg.id] || 'none'}
+                        onChange={(_, d) => handleSegmentMarkChange3D(seg.id, d.value as SegmentMarkType)}
+                      >
+                        {SEGMENT_MARK_OPTIONS.map(opt => (
+                          <option key={opt.key} value={opt.key}>
+                            {opt.iconLabel} {opt.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 3D Segment Selectors - Lateral Edges */}
+            {activeElements3D.lateralSegments.length > 0 && (
+              <div>
+                <Text weight="medium" size={200} style={{ color: '#475569', marginBottom: '4px', display: 'block' }}>
+                  Ký hiệu cạnh bên / trục:
+                </Text>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: activeElements3D.lateralSegments.length > 4 ? 'repeat(5, 1fr)' : activeElements3D.lateralSegments.length === 4 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
+                  gap: '6px'
+                }}>
+                  {activeElements3D.lateralSegments.map(seg => (
+                    <Field key={seg.id} label={`Cạnh ${seg.label}:`}>
+                      <Select
+                        size="small"
+                        value={segmentMarks3D[seg.id] || 'none'}
+                        onChange={(_, d) => handleSegmentMarkChange3D(seg.id, d.value as SegmentMarkType)}
+                      >
+                        {SEGMENT_MARK_OPTIONS.map(opt => (
+                          <option key={opt.key} value={opt.key}>
+                            {opt.iconLabel} {opt.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className={styles.actions}>

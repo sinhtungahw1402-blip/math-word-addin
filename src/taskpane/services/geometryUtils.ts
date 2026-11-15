@@ -8,6 +8,214 @@ export interface Point {
   y: number;
 }
 
+export type AngleMarkType = 'none' | 'arc1' | 'arc2' | 'arc1-tick1' | 'arc1-tick2' | 'right';
+export type SegmentMarkType = 'none' | 'tick1' | 'tick2' | 'tick3' | 'cross';
+
+export const ANGLE_MARK_OPTIONS: { key: AngleMarkType; label: string; iconLabel: string }[] = [
+  { key: 'none', label: 'Không', iconLabel: '—' },
+  { key: 'arc1', label: '1 vòng cung', iconLabel: ')' },
+  { key: 'arc2', label: '2 vòng cung', iconLabel: '))' },
+  { key: 'arc1-tick1', label: '1 cung + 1 gạch', iconLabel: ')̸' },
+  { key: 'arc1-tick2', label: '1 cung + 2 gạch', iconLabel: ')⫽' },
+  { key: 'right', label: 'Góc vuông (∟)', iconLabel: '∟' }
+];
+
+export const SEGMENT_MARK_OPTIONS: { key: SegmentMarkType; label: string; iconLabel: string }[] = [
+  { key: 'none', label: 'Không', iconLabel: '—' },
+  { key: 'tick1', label: '1 gạch (|)', iconLabel: '|' },
+  { key: 'tick2', label: '2 gạch (||)', iconLabel: '||' },
+  { key: 'tick3', label: '3 gạch (|||)', iconLabel: '|||' },
+  { key: 'cross', label: 'Dấu x (×)', iconLabel: '×' }
+];
+
+/**
+ * Renders flexible mathematical angle markings at vertex V between rays towards pt1 and pt2
+ */
+export function renderAngleMark(
+  V: Point,
+  pt1: Point,
+  pt2: Point,
+  type: AngleMarkType,
+  color: string = '#d13438',
+  customRadius?: number
+): string {
+  if (!type || type === 'none') return '';
+
+  const d1x = pt1.x - V.x;
+  const d1y = pt1.y - V.y;
+  const len1 = Math.hypot(d1x, d1y) || 1;
+  const u1x = d1x / len1;
+  const u1y = d1y / len1;
+
+  const d2x = pt2.x - V.x;
+  const d2y = pt2.y - V.y;
+  const len2 = Math.hypot(d2x, d2y) || 1;
+  const u2x = d2x / len2;
+  const u2y = d2y / len2;
+
+  // 1. Right Angle (Góc vuông)
+  if (type === 'right') {
+    const size = customRadius || 13;
+    const p1x = V.x + size * u1x;
+    const p1y = V.y + size * u1y;
+    const p2x = p1x + size * u2x;
+    const p2y = p1y + size * u2y;
+    const p3x = V.x + size * u2x;
+    const p3y = V.y + size * u2y;
+    return `<polyline points="${p1x.toFixed(1)},${p1y.toFixed(1)} ${p2x.toFixed(1)},${p2y.toFixed(1)} ${p3x.toFixed(1)},${p3y.toFixed(1)}" fill="none" stroke="${color}" stroke-width="1.6" />`;
+  }
+
+  // 2. Arcs calculations
+  const a1 = Math.atan2(u1y, u1x);
+  const a2 = Math.atan2(u2y, u2x);
+
+  let diff = a2 - a1;
+  while (diff < 0) diff += 2 * Math.PI;
+  while (diff > 2 * Math.PI) diff -= 2 * Math.PI;
+
+  let startAngle = a1;
+  let sweepAngle = diff;
+  let sweepFlag = 1;
+
+  if (diff > Math.PI) {
+    startAngle = a2;
+    sweepAngle = 2 * Math.PI - diff;
+    sweepFlag = 1;
+  }
+
+  const endAngle = startAngle + sweepAngle;
+  const midAngle = startAngle + sweepAngle / 2;
+
+  const drawArc = (r: number) => {
+    const sx = V.x + r * Math.cos(startAngle);
+    const sy = V.y + r * Math.sin(startAngle);
+    const ex = V.x + r * Math.cos(endAngle);
+    const ey = V.y + r * Math.sin(endAngle);
+    return `<path d="M ${sx.toFixed(1)},${sy.toFixed(1)} A ${r} ${r} 0 0 ${sweepFlag} ${ex.toFixed(1)},${ey.toFixed(1)}" fill="none" stroke="${color}" stroke-width="1.5" />`;
+  };
+
+  const R = customRadius || 21;
+
+  if (type === 'arc1') {
+    return drawArc(R);
+  }
+
+  if (type === 'arc2') {
+    return `${drawArc(R - 4)}\n${drawArc(R + 2)}`;
+  }
+
+  if (type === 'arc1-tick1') {
+    const arcSvg = drawArc(R);
+    const cosMid = Math.cos(midAngle);
+    const sinMid = Math.sin(midAngle);
+    const t1x = V.x + (R - 5) * cosMid;
+    const t1y = V.y + (R - 5) * sinMid;
+    const t2x = V.x + (R + 5) * cosMid;
+    const t2y = V.y + (R + 5) * sinMid;
+    return `${arcSvg}\n<line x1="${t1x.toFixed(1)}" y1="${t1y.toFixed(1)}" x2="${t2x.toFixed(1)}" y2="${t2y.toFixed(1)}" stroke="${color}" stroke-width="1.6" />`;
+  }
+
+  if (type === 'arc1-tick2') {
+    const arcSvg = drawArc(R);
+    const delta = 0.09;
+    const mid1 = midAngle - delta;
+    const mid2 = midAngle + delta;
+
+    const t1a_x = V.x + (R - 5) * Math.cos(mid1);
+    const t1a_y = V.y + (R - 5) * Math.sin(mid1);
+    const t1b_x = V.x + (R + 5) * Math.cos(mid1);
+    const t1b_y = V.y + (R + 5) * Math.sin(mid1);
+
+    const t2a_x = V.x + (R - 5) * Math.cos(mid2);
+    const t2a_y = V.y + (R - 5) * Math.sin(mid2);
+    const t2b_x = V.x + (R + 5) * Math.cos(mid2);
+    const t2b_y = V.y + (R + 5) * Math.sin(mid2);
+
+    return `${arcSvg}\n<line x1="${t1a_x.toFixed(1)}" y1="${t1a_y.toFixed(1)}" x2="${t1b_x.toFixed(1)}" y2="${t1b_y.toFixed(1)}" stroke="${color}" stroke-width="1.6" />\n<line x1="${t2a_x.toFixed(1)}" y1="${t2a_y.toFixed(1)}" x2="${t2b_x.toFixed(1)}" y2="${t2b_y.toFixed(1)}" stroke="${color}" stroke-width="1.6" />`;
+  }
+
+  return '';
+}
+
+/**
+ * Renders mathematical segment markings (equal ticks or cross) on a segment between pt1 and pt2
+ */
+export function renderSegmentMark(
+  pt1: Point,
+  pt2: Point,
+  type: SegmentMarkType,
+  color: string = '#d13438',
+  length: number = 6
+): string {
+  if (!type || type === 'none') return '';
+
+  const mx = (pt1.x + pt2.x) / 2;
+  const my = (pt1.y + pt2.y) / 2;
+
+  const dx = pt2.x - pt1.x;
+  const dy = pt2.y - pt1.y;
+  const len = Math.hypot(dx, dy) || 1;
+
+  const nx = -dy / len;
+  const ny = dx / len;
+
+  const px = dx / len;
+  const py = dy / len;
+
+  if (type === 'tick1') {
+    const x1 = mx + length * nx;
+    const y1 = my + length * ny;
+    const x2 = mx - length * nx;
+    const y2 = my - length * ny;
+    return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${color}" stroke-width="1.8" />`;
+  }
+
+  if (type === 'tick2') {
+    const offset = 2.5;
+    const m1x = mx - offset * px;
+    const m1y = my - offset * py;
+    const m2x = mx + offset * px;
+    const m2y = my + offset * py;
+
+    const t1a_x = m1x + length * nx;
+    const t1a_y = m1y + length * ny;
+    const t1b_x = m1x - length * nx;
+    const t1b_y = m1y - length * ny;
+
+    const t2a_x = m2x + length * nx;
+    const t2a_y = m2y + length * ny;
+    const t2b_x = m2x - length * nx;
+    const t2b_y = m2y - length * ny;
+
+    return `<line x1="${t1a_x.toFixed(1)}" y1="${t1a_y.toFixed(1)}" x2="${t1b_x.toFixed(1)}" y2="${t1b_y.toFixed(1)}" stroke="${color}" stroke-width="1.8" />\n<line x1="${t2a_x.toFixed(1)}" y1="${t2a_y.toFixed(1)}" x2="${t2b_x.toFixed(1)}" y2="${t2b_y.toFixed(1)}" stroke="${color}" stroke-width="1.8" />`;
+  }
+
+  if (type === 'tick3') {
+    const offset = 3.5;
+    const m1x = mx - offset * px;
+    const m1y = my - offset * py;
+    const m2x = mx;
+    const m2y = my;
+    const m3x = mx + offset * px;
+    const m3y = my + offset * py;
+
+    return `<line x1="${(m1x + length * nx).toFixed(1)}" y1="${(m1y + length * ny).toFixed(1)}" x2="${(m1x - length * nx).toFixed(1)}" y2="${(m1y - length * ny).toFixed(1)}" stroke="${color}" stroke-width="1.8" />\n<line x1="${(m2x + length * nx).toFixed(1)}" y1="${(m2y + length * ny).toFixed(1)}" x2="${(m2x - length * nx).toFixed(1)}" y2="${(m2y - length * ny).toFixed(1)}" stroke="${color}" stroke-width="1.8" />\n<line x1="${(m3x + length * nx).toFixed(1)}" y1="${(m3y + length * ny).toFixed(1)}" x2="${(m3x - length * nx).toFixed(1)}" y2="${(m3y - length * ny).toFixed(1)}" stroke="${color}" stroke-width="1.8" />`;
+  }
+
+  if (type === 'cross') {
+    const r = length * 0.9;
+    const cos45 = Math.SQRT1_2;
+    const d1x = (px + nx) * cos45 * r;
+    const d1y = (py + ny) * cos45 * r;
+    const d2x = (px - nx) * cos45 * r;
+    const d2y = (py - ny) * cos45 * r;
+
+    return `<line x1="${(mx - d1x).toFixed(1)}" y1="${(my - d1y).toFixed(1)}" x2="${(mx + d1x).toFixed(1)}" y2="${(my + d1y).toFixed(1)}" stroke="${color}" stroke-width="1.8" />\n<line x1="${(mx - d2x).toFixed(1)}" y1="${(my - d2y).toFixed(1)}" x2="${(mx + d2x).toFixed(1)}" y2="${(my + d2y).toFixed(1)}" stroke="${color}" stroke-width="1.8" />`;
+  }
+
+  return '';
+}
+
 /**
  * Computes a right-angle mark '∟' at vertex V between rays towards pt1 and pt2
  */

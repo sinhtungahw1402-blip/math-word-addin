@@ -33,6 +33,12 @@ import {
 } from '../services/conicUtils';
 import {
   Point,
+  AngleMarkType,
+  SegmentMarkType,
+  ANGLE_MARK_OPTIONS,
+  SEGMENT_MARK_OPTIONS,
+  renderAngleMark,
+  renderSegmentMark,
   getRightAngleMark,
   getAngleArc,
   getSegmentTicks,
@@ -170,6 +176,23 @@ export const PlaneGeometryEditor: React.FC = () => {
 
   const [status, setStatus] = useState<string>('');
 
+  // Angle & Segment Custom Marking State
+  const [angleMarks, setAngleMarks] = useState<Record<string, AngleMarkType>>({});
+  const [segmentMarks, setSegmentMarks] = useState<Record<string, SegmentMarkType>>({});
+
+  const handleAngleMarkChange = (vertexId: string, mark: AngleMarkType) => {
+    setAngleMarks(prev => ({ ...prev, [vertexId]: mark }));
+  };
+
+  const handleSegmentMarkChange = (segId: string, mark: SegmentMarkType) => {
+    setSegmentMarks(prev => ({ ...prev, [segId]: mark }));
+  };
+
+  const handleClearMarks = () => {
+    setAngleMarks({});
+    setSegmentMarks({});
+  };
+
   // Interactive Drag & Drop State for Vertices
   const [customPoints, setCustomPoints] = useState<Record<string, Point>>({});
   const [activeDrag, setActiveDrag] = useState<string | null>(null);
@@ -264,6 +287,78 @@ export const PlaneGeometryEditor: React.FC = () => {
 
   const handleResetPoints = () => {
     setCustomPoints({});
+  };
+
+  const getActiveElements = () => {
+    if (category === 'conics') {
+      return { angleVerts: [], segments: [] };
+    }
+    if (category === 'quads') {
+      if (quadType === 'regular_pentagon') {
+        return {
+          angleVerts: [
+            { id: 'A', label: 'A' },
+            { id: 'B', label: 'B' },
+            { id: 'C', label: 'C' },
+            { id: 'D', label: 'D' },
+            { id: 'E', label: 'E' }
+          ],
+          segments: [
+            { id: 'AB', label: 'AB' },
+            { id: 'BC', label: 'BC' },
+            { id: 'CD', label: 'CD' },
+            { id: 'DE', label: 'DE' },
+            { id: 'EA', label: 'EA' }
+          ]
+        };
+      }
+      if (quadType === 'regular_hexagon') {
+        return {
+          angleVerts: [
+            { id: 'A', label: 'A' },
+            { id: 'B', label: 'B' },
+            { id: 'C', label: 'C' },
+            { id: 'D', label: 'D' },
+            { id: 'E', label: 'E' },
+            { id: 'F', label: 'F' }
+          ],
+          segments: [
+            { id: 'AB', label: 'AB' },
+            { id: 'BC', label: 'BC' },
+            { id: 'CD', label: 'CD' },
+            { id: 'DE', label: 'DE' },
+            { id: 'EF', label: 'EF' },
+            { id: 'FA', label: 'FA' }
+          ]
+        };
+      }
+      return {
+        angleVerts: [
+          { id: 'A', label: lblA },
+          { id: 'B', label: lblB },
+          { id: 'C', label: lblC },
+          { id: 'D', label: lblD }
+        ],
+        segments: [
+          { id: 'AB', label: `${lblA}${lblB}` },
+          { id: 'BC', label: `${lblB}${lblC}` },
+          { id: 'CD', label: `${lblC}${lblD}` },
+          { id: 'DA', label: `${lblD}${lblA}` }
+        ]
+      };
+    }
+    return {
+      angleVerts: [
+        { id: 'A', label: lblA },
+        { id: 'B', label: lblB },
+        { id: 'C', label: lblC }
+      ],
+      segments: [
+        { id: 'AB', label: `${lblA}${lblB}` },
+        { id: 'BC', label: `${lblB}${lblC}` },
+        { id: 'CA', label: `${lblC}${lblA}` }
+      ]
+    };
   };
 
   // Compute Scene Data
@@ -416,9 +511,19 @@ export const PlaneGeometryEditor: React.FC = () => {
         }
       }
 
+      let userMarks = '';
+      if (angleMarks['A'] && angleMarks['A'] !== 'none') userMarks += renderAngleMark(A, B, C, angleMarks['A'], accentColor);
+      if (angleMarks['B'] && angleMarks['B'] !== 'none') userMarks += renderAngleMark(B, A, C, angleMarks['B'], accentColor);
+      if (angleMarks['C'] && angleMarks['C'] !== 'none') userMarks += renderAngleMark(C, A, B, angleMarks['C'], accentColor);
+
+      if (segmentMarks['AB'] && segmentMarks['AB'] !== 'none') userMarks += renderSegmentMark(A, B, segmentMarks['AB'], accentColor);
+      if (segmentMarks['BC'] && segmentMarks['BC'] !== 'none') userMarks += renderSegmentMark(B, C, segmentMarks['BC'], accentColor);
+      if (segmentMarks['CA'] && segmentMarks['CA'] !== 'none') userMarks += renderSegmentMark(C, A, segmentMarks['CA'], accentColor);
+
       content = `
         <polygon points="${A.x.toFixed(1)},${A.y.toFixed(1)} ${B.x.toFixed(1)},${B.y.toFixed(1)} ${C.x.toFixed(1)},${C.y.toFixed(1)}" fill="none" stroke="${strokeColor}" stroke-width="2" />
         ${extra}
+        ${userMarks}
       `;
 
       draggableVertices = [
@@ -512,8 +617,23 @@ export const PlaneGeometryEditor: React.FC = () => {
           const D = getPoint('D', defaults.D);
           const E = getPoint('E', defaults.E);
           caption = `Ngũ giác đều ABCDE (5 cạnh bằng nhau, 5 góc bằng 108°)`;
+
+          let userMarks = '';
+          if (angleMarks['A'] && angleMarks['A'] !== 'none') userMarks += renderAngleMark(A, E, B, angleMarks['A'], accentColor);
+          if (angleMarks['B'] && angleMarks['B'] !== 'none') userMarks += renderAngleMark(B, A, C, angleMarks['B'], accentColor);
+          if (angleMarks['C'] && angleMarks['C'] !== 'none') userMarks += renderAngleMark(C, B, D, angleMarks['C'], accentColor);
+          if (angleMarks['D'] && angleMarks['D'] !== 'none') userMarks += renderAngleMark(D, C, E, angleMarks['D'], accentColor);
+          if (angleMarks['E'] && angleMarks['E'] !== 'none') userMarks += renderAngleMark(E, D, A, angleMarks['E'], accentColor);
+
+          if (segmentMarks['AB'] && segmentMarks['AB'] !== 'none') userMarks += renderSegmentMark(A, B, segmentMarks['AB'], accentColor);
+          if (segmentMarks['BC'] && segmentMarks['BC'] !== 'none') userMarks += renderSegmentMark(B, C, segmentMarks['BC'], accentColor);
+          if (segmentMarks['CD'] && segmentMarks['CD'] !== 'none') userMarks += renderSegmentMark(C, D, segmentMarks['CD'], accentColor);
+          if (segmentMarks['DE'] && segmentMarks['DE'] !== 'none') userMarks += renderSegmentMark(D, E, segmentMarks['DE'], accentColor);
+          if (segmentMarks['EA'] && segmentMarks['EA'] !== 'none') userMarks += renderSegmentMark(E, A, segmentMarks['EA'], accentColor);
+
           content = `
             <polygon points="${A.x.toFixed(1)},${A.y.toFixed(1)} ${B.x.toFixed(1)},${B.y.toFixed(1)} ${C.x.toFixed(1)},${C.y.toFixed(1)} ${D.x.toFixed(1)},${D.y.toFixed(1)} ${E.x.toFixed(1)},${E.y.toFixed(1)}" fill="none" stroke="${strokeColor}" stroke-width="2" />
+            ${userMarks}
           `;
           draggableVertices = [
             { id: 'A', pt: A, label: 'A', labelOffset: { x: -4, y: -10 } },
@@ -534,11 +654,28 @@ export const PlaneGeometryEditor: React.FC = () => {
           const E = getPoint('E', defaults.E);
           const F = getPoint('F', defaults.F);
           caption = `Lục giác đều ABCDEF (6 cạnh bằng nhau, 6 góc bằng 120°)`;
+
+          let userMarks = '';
+          if (angleMarks['A'] && angleMarks['A'] !== 'none') userMarks += renderAngleMark(A, F, B, angleMarks['A'], accentColor);
+          if (angleMarks['B'] && angleMarks['B'] !== 'none') userMarks += renderAngleMark(B, A, C, angleMarks['B'], accentColor);
+          if (angleMarks['C'] && angleMarks['C'] !== 'none') userMarks += renderAngleMark(C, B, D, angleMarks['C'], accentColor);
+          if (angleMarks['D'] && angleMarks['D'] !== 'none') userMarks += renderAngleMark(D, C, E, angleMarks['D'], accentColor);
+          if (angleMarks['E'] && angleMarks['E'] !== 'none') userMarks += renderAngleMark(E, D, F, angleMarks['E'], accentColor);
+          if (angleMarks['F'] && angleMarks['F'] !== 'none') userMarks += renderAngleMark(F, E, A, angleMarks['F'], accentColor);
+
+          if (segmentMarks['AB'] && segmentMarks['AB'] !== 'none') userMarks += renderSegmentMark(A, B, segmentMarks['AB'], accentColor);
+          if (segmentMarks['BC'] && segmentMarks['BC'] !== 'none') userMarks += renderSegmentMark(B, C, segmentMarks['BC'], accentColor);
+          if (segmentMarks['CD'] && segmentMarks['CD'] !== 'none') userMarks += renderSegmentMark(C, D, segmentMarks['CD'], accentColor);
+          if (segmentMarks['DE'] && segmentMarks['DE'] !== 'none') userMarks += renderSegmentMark(D, E, segmentMarks['DE'], accentColor);
+          if (segmentMarks['EF'] && segmentMarks['EF'] !== 'none') userMarks += renderSegmentMark(E, F, segmentMarks['EF'], accentColor);
+          if (segmentMarks['FA'] && segmentMarks['FA'] !== 'none') userMarks += renderSegmentMark(F, A, segmentMarks['FA'], accentColor);
+
           content = `
             <polygon points="${A.x.toFixed(1)},${A.y.toFixed(1)} ${B.x.toFixed(1)},${B.y.toFixed(1)} ${C.x.toFixed(1)},${C.y.toFixed(1)} ${D.x.toFixed(1)},${D.y.toFixed(1)} ${E.x.toFixed(1)},${E.y.toFixed(1)} ${F.x.toFixed(1)},${F.y.toFixed(1)}" fill="none" stroke="${strokeColor}" stroke-width="2" />
             <line x1="${A.x}" y1="${A.y}" x2="${D.x}" y2="${D.y}" stroke="${auxColor}" stroke-dasharray="2 2" stroke-width="1.2" />
             <line x1="${B.x}" y1="${B.y}" x2="${E.x}" y2="${E.y}" stroke="${auxColor}" stroke-dasharray="2 2" stroke-width="1.2" />
             <line x1="${C.x}" y1="${C.y}" x2="${F.x}" y2="${F.y}" stroke="${auxColor}" stroke-dasharray="2 2" stroke-width="1.2" />
+            ${userMarks}
           `;
           draggableVertices = [
             { id: 'A', pt: A, label: 'A', labelOffset: { x: -4, y: -10 } },
@@ -580,9 +717,21 @@ export const PlaneGeometryEditor: React.FC = () => {
           }
         }
 
+        let userMarks = '';
+        if (angleMarks['A'] && angleMarks['A'] !== 'none') userMarks += renderAngleMark(A, B, D, angleMarks['A'], accentColor);
+        if (angleMarks['B'] && angleMarks['B'] !== 'none') userMarks += renderAngleMark(B, A, C, angleMarks['B'], accentColor);
+        if (angleMarks['C'] && angleMarks['C'] !== 'none') userMarks += renderAngleMark(C, B, D, angleMarks['C'], accentColor);
+        if (angleMarks['D'] && angleMarks['D'] !== 'none') userMarks += renderAngleMark(D, C, A, angleMarks['D'], accentColor);
+
+        if (segmentMarks['AB'] && segmentMarks['AB'] !== 'none') userMarks += renderSegmentMark(A, B, segmentMarks['AB'], accentColor);
+        if (segmentMarks['BC'] && segmentMarks['BC'] !== 'none') userMarks += renderSegmentMark(B, C, segmentMarks['BC'], accentColor);
+        if (segmentMarks['CD'] && segmentMarks['CD'] !== 'none') userMarks += renderSegmentMark(C, D, segmentMarks['CD'], accentColor);
+        if (segmentMarks['DA'] && segmentMarks['DA'] !== 'none') userMarks += renderSegmentMark(D, A, segmentMarks['DA'], accentColor);
+
         content = `
           <polygon points="${A.x.toFixed(1)},${A.y.toFixed(1)} ${B.x.toFixed(1)},${B.y.toFixed(1)} ${C.x.toFixed(1)},${C.y.toFixed(1)} ${D.x.toFixed(1)},${D.y.toFixed(1)}" fill="none" stroke="${strokeColor}" stroke-width="2" />
           ${extra}
+          ${userMarks}
         `;
 
         draggableVertices = [
@@ -697,9 +846,19 @@ export const PlaneGeometryEditor: React.FC = () => {
         }
       }
 
+      let userMarks = '';
+      if (angleMarks['A'] && angleMarks['A'] !== 'none') userMarks += renderAngleMark(A, B, C, angleMarks['A'], accentColor);
+      if (angleMarks['B'] && angleMarks['B'] !== 'none') userMarks += renderAngleMark(B, A, C, angleMarks['B'], accentColor);
+      if (angleMarks['C'] && angleMarks['C'] !== 'none') userMarks += renderAngleMark(C, A, B, angleMarks['C'], accentColor);
+
+      if (segmentMarks['AB'] && segmentMarks['AB'] !== 'none') userMarks += renderSegmentMark(A, B, segmentMarks['AB'], accentColor);
+      if (segmentMarks['BC'] && segmentMarks['BC'] !== 'none') userMarks += renderSegmentMark(B, C, segmentMarks['BC'], accentColor);
+      if (segmentMarks['CA'] && segmentMarks['CA'] !== 'none') userMarks += renderSegmentMark(C, A, segmentMarks['CA'], accentColor);
+
       content = `
         <polygon points="${A.x.toFixed(1)},${A.y.toFixed(1)} ${B.x.toFixed(1)},${B.y.toFixed(1)} ${C.x.toFixed(1)},${C.y.toFixed(1)}" fill="none" stroke="${strokeColor}" stroke-width="2" />
         ${extra}
+        ${userMarks}
       `;
 
       draggableVertices = [
@@ -870,6 +1029,7 @@ export const PlaneGeometryEditor: React.FC = () => {
   };
 
   const scene = getSceneData();
+  const activeElements = getActiveElements();
 
   // Generate Clean SVG String for Word Insertion (without interactive drag rings)
   const getCleanSvgString = () => {
@@ -908,6 +1068,8 @@ export const PlaneGeometryEditor: React.FC = () => {
     setLblC('C');
     setLblD('D');
     setCustomPoints({});
+    setAngleMarks({});
+    setSegmentMarks({});
   };
 
   return (
@@ -1515,6 +1677,92 @@ export const PlaneGeometryEditor: React.FC = () => {
                 label="Ký hiệu cạnh bằng nhau"
               />
             </div>
+
+            {/* Custom Angle & Segment Markings */}
+            {activeElements.angleVerts.length > 0 && (
+              <div style={{
+                backgroundColor: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                padding: '12px',
+                marginTop: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text weight="semibold" size={300} style={{ color: '#0f6cbd' }}>
+                    📐 Ký hiệu góc &amp; Cạnh bằng nhau (Tùy chỉnh)
+                  </Text>
+                  {(Object.values(angleMarks).some(v => v && v !== 'none') || Object.values(segmentMarks).some(v => v && v !== 'none')) && (
+                    <Button
+                      size="small"
+                      appearance="subtle"
+                      icon={<ArrowReset20Regular />}
+                      onClick={handleClearMarks}
+                    >
+                      Xóa tất cả ký hiệu
+                    </Button>
+                  )}
+                </div>
+
+                {/* Angle Selectors */}
+                <div>
+                  <Text weight="medium" size={200} style={{ color: '#475569', marginBottom: '4px', display: 'block' }}>
+                    Ký hiệu góc tại các đỉnh:
+                  </Text>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: activeElements.angleVerts.length > 4 ? 'repeat(5, 1fr)' : activeElements.angleVerts.length === 4 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
+                    gap: '6px'
+                  }}>
+                    {activeElements.angleVerts.map(v => (
+                      <Field key={v.id} label={`Đỉnh ${v.label}:`}>
+                        <Select
+                          size="small"
+                          value={angleMarks[v.id] || 'none'}
+                          onChange={(_, d) => handleAngleMarkChange(v.id, d.value as AngleMarkType)}
+                        >
+                          {ANGLE_MARK_OPTIONS.map(opt => (
+                            <option key={opt.key} value={opt.key}>
+                              {opt.iconLabel} {opt.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Segment Selectors */}
+                <div>
+                  <Text weight="medium" size={200} style={{ color: '#475569', marginBottom: '4px', display: 'block' }}>
+                    Ký hiệu trên các cạnh (thể hiện cạnh bằng nhau):
+                  </Text>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: activeElements.segments.length > 4 ? 'repeat(5, 1fr)' : activeElements.segments.length === 4 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
+                    gap: '6px'
+                  }}>
+                    {activeElements.segments.map(seg => (
+                      <Field key={seg.id} label={`Cạnh ${seg.label}:`}>
+                        <Select
+                          size="small"
+                          value={segmentMarks[seg.id] || 'none'}
+                          onChange={(_, d) => handleSegmentMarkChange(seg.id, d.value as SegmentMarkType)}
+                        >
+                          {SEGMENT_MARK_OPTIONS.map(opt => (
+                            <option key={opt.key} value={opt.key}>
+                              {opt.iconLabel} {opt.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
 
