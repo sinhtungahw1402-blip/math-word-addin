@@ -35,6 +35,9 @@ import {
   Point,
   AngleMarkType,
   SegmentMarkType,
+  ExtraPoint,
+  ExtraLine,
+  ExtraShape,
   ANGLE_MARK_OPTIONS,
   SEGMENT_MARK_OPTIONS,
   renderAngleMark,
@@ -45,8 +48,10 @@ import {
   getProjection,
   getLineIntersection,
   calculatePlaneConstraints,
-  getDefaultPlanePoints
+  getDefaultPlanePoints,
+  renderExtraElements
 } from '../services/geometryUtils';
+import { GeometryCustomElementsCard } from './GeometryCustomElementsCard';
 
 const useStyles = makeStyles({
   container: {
@@ -191,6 +196,23 @@ export const PlaneGeometryEditor: React.FC = () => {
   const handleClearMarks = () => {
     setAngleMarks({});
     setSegmentMarks({});
+  };
+
+  // User-added Extra Geometric Elements State
+  const [extraPoints, setExtraPoints] = useState<ExtraPoint[]>([]);
+  const [extraLines, setExtraLines] = useState<ExtraLine[]>([]);
+  const [extraShapes, setExtraShapes] = useState<ExtraShape[]>([]);
+
+  const handleAddExtraPoint = (pt: ExtraPoint) => setExtraPoints(prev => [...prev, pt]);
+  const handleRemoveExtraPoint = (id: string) => setExtraPoints(prev => prev.filter(p => p.id !== id));
+  const handleAddExtraLine = (line: ExtraLine) => setExtraLines(prev => [...prev, line]);
+  const handleRemoveExtraLine = (id: string) => setExtraLines(prev => prev.filter(l => l.id !== id));
+  const handleAddExtraShape = (shape: ExtraShape) => setExtraShapes(prev => [...prev, shape]);
+  const handleRemoveExtraShape = (id: string) => setExtraShapes(prev => prev.filter(s => s.id !== id));
+  const handleClearExtraAll = () => {
+    setExtraPoints([]);
+    setExtraLines([]);
+    setExtraShapes([]);
   };
 
   // Interactive Drag & Drop State for Vertices
@@ -1025,6 +1047,16 @@ export const PlaneGeometryEditor: React.FC = () => {
       }
     }
 
+    // 5. RENDER USER-ADDED EXTRA ELEMENTS (Points, Lines, Circles, Derived Geometry)
+    const basePointMap: Record<string, Point> = {};
+    draggableVertices.forEach(v => {
+      basePointMap[v.id] = v.pt;
+    });
+
+    const extraRes = renderExtraElements(extraPoints, extraLines, extraShapes, basePointMap, customPoints);
+    content += '\n' + extraRes.svgContent;
+    draggableVertices = [...draggableVertices, ...extraRes.extraDraggableVertices];
+
     return { content, caption, draggableVertices };
   };
 
@@ -1765,6 +1797,26 @@ export const PlaneGeometryEditor: React.FC = () => {
             )}
           </>
         )}
+
+        {/* Extra Geometric Elements Card (Add custom points, lines, circles, midpoints, centroids, projections...) */}
+        <GeometryCustomElementsCard
+          is3D={false}
+          availablePoints={[
+            ...activeElements.angleVerts,
+            ...scene.draggableVertices.map(v => ({ id: v.id, label: v.label })),
+            ...extraPoints.map(p => ({ id: p.id, label: p.label }))
+          ].filter((item, index, self) => index === self.findIndex(t => t.id === item.id))}
+          extraPoints={extraPoints}
+          extraLines={extraLines}
+          extraShapes={extraShapes}
+          onAddPoint={handleAddExtraPoint}
+          onRemovePoint={handleRemoveExtraPoint}
+          onAddLine={handleAddExtraLine}
+          onRemoveLine={handleRemoveExtraLine}
+          onAddShape={handleAddExtraShape}
+          onRemoveShape={handleRemoveExtraShape}
+          onClearAll={handleClearExtraAll}
+        />
 
         {/* Actions */}
         <div className={styles.actions}>

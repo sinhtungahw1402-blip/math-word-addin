@@ -28,6 +28,9 @@ import {
   Point,
   AngleMarkType,
   SegmentMarkType,
+  ExtraPoint,
+  ExtraLine,
+  ExtraShape,
   ANGLE_MARK_OPTIONS,
   SEGMENT_MARK_OPTIONS,
   renderAngleMark,
@@ -36,8 +39,10 @@ import {
   getQuadPyramidVisibility,
   getPrismVisibility,
   calculateSpaceConstraints,
-  getDefaultSpacePoints
+  getDefaultSpacePoints,
+  renderExtraElements
 } from '../services/geometryUtils';
+import { GeometryCustomElementsCard } from './GeometryCustomElementsCard';
 
 const useStyles = makeStyles({
   container: {
@@ -160,6 +165,23 @@ export const SpaceGeometryEditor: React.FC = () => {
   const handleClearMarks3D = () => {
     setAngleMarks3D({});
     setSegmentMarks3D({});
+  };
+
+  // User-added Extra Geometric Elements State for 3D Geometry
+  const [extraPoints3D, setExtraPoints3D] = useState<ExtraPoint[]>([]);
+  const [extraLines3D, setExtraLines3D] = useState<ExtraLine[]>([]);
+  const [extraShapes3D, setExtraShapes3D] = useState<ExtraShape[]>([]);
+
+  const handleAddExtraPoint3D = (pt: ExtraPoint) => setExtraPoints3D(prev => [...prev, pt]);
+  const handleRemoveExtraPoint3D = (id: string) => setExtraPoints3D(prev => prev.filter(p => p.id !== id));
+  const handleAddExtraLine3D = (line: ExtraLine) => setExtraLines3D(prev => [...prev, line]);
+  const handleRemoveExtraLine3D = (id: string) => setExtraLines3D(prev => prev.filter(l => l.id !== id));
+  const handleAddExtraShape3D = (shape: ExtraShape) => setExtraShapes3D(prev => [...prev, shape]);
+  const handleRemoveExtraShape3D = (id: string) => setExtraShapes3D(prev => prev.filter(s => s.id !== id));
+  const handleClearExtraAll3D = () => {
+    setExtraPoints3D([]);
+    setExtraLines3D([]);
+    setExtraShapes3D([]);
   };
 
   // Interactive Drag & Drop State for Vertices
@@ -1145,6 +1167,16 @@ export const SpaceGeometryEditor: React.FC = () => {
       }
     }
 
+    // 5. RENDER USER-ADDED 3D EXTRA ELEMENTS (Points, Lines, Cross Sections)
+    const basePointMap: Record<string, Point> = {};
+    draggableVertices.forEach(v => {
+      basePointMap[v.id] = v.pt;
+    });
+
+    const extraRes = renderExtraElements(extraPoints3D, extraLines3D, extraShapes3D, basePointMap, customPoints);
+    content += '\n' + extraRes.svgContent;
+    draggableVertices = [...draggableVertices, ...extraRes.extraDraggableVertices];
+
     return { content, caption, draggableVertices };
   };
 
@@ -1189,6 +1221,9 @@ export const SpaceGeometryEditor: React.FC = () => {
     setCustomPoints({});
     setAngleMarks3D({});
     setSegmentMarks3D({});
+    setExtraPoints3D([]);
+    setExtraLines3D([]);
+    setExtraShapes3D([]);
   };
 
   return (
@@ -1546,6 +1581,25 @@ export const SpaceGeometryEditor: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* Extra Geometric Elements Card for 3D Geometry */}
+        <GeometryCustomElementsCard
+          is3D={true}
+          availablePoints={[
+            ...scene.draggableVertices.map(v => ({ id: v.id, label: v.label })),
+            ...extraPoints3D.map(p => ({ id: p.id, label: p.label }))
+          ].filter((item, index, self) => index === self.findIndex(t => t.id === item.id))}
+          extraPoints={extraPoints3D}
+          extraLines={extraLines3D}
+          extraShapes={extraShapes3D}
+          onAddPoint={handleAddExtraPoint3D}
+          onRemovePoint={handleRemoveExtraPoint3D}
+          onAddLine={handleAddExtraLine3D}
+          onRemoveLine={handleRemoveExtraLine3D}
+          onAddShape={handleAddExtraShape3D}
+          onRemoveShape={handleRemoveExtraShape3D}
+          onClearAll={handleClearExtraAll3D}
+        />
 
         {/* Actions */}
         <div className={styles.actions}>

@@ -11,6 +11,73 @@ export interface Point {
 export type AngleMarkType = 'none' | 'arc1' | 'arc2' | 'arc1-tick1' | 'arc1-tick2' | 'right';
 export type SegmentMarkType = 'none' | 'tick1' | 'tick2' | 'tick3' | 'cross';
 
+export type ExtraPointType =
+  | 'midpoint'
+  | 'centroid'
+  | 'orthocenter'
+  | 'circumcenter'
+  | 'incenter'
+  | 'projection'
+  | 'intersection'
+  | 'ratio'
+  | 'free';
+
+export interface ExtraPoint {
+  id: string;
+  label: string;
+  type: ExtraPointType;
+  color?: string;
+  pt1?: string;
+  pt2?: string;
+  pt3?: string;
+  fromPt?: string;
+  ontoLineP1?: string;
+  ontoLineP2?: string;
+  line1P1?: string;
+  line1P2?: string;
+  line2P1?: string;
+  line2P2?: string;
+  ratio?: number;
+  fixedPt?: Point;
+  labelOffset?: { x: number; y: number };
+}
+
+export type ExtraLineType = 'segment' | 'line' | 'ray' | 'parallel' | 'perpendicular';
+
+export interface ExtraLine {
+  id: string;
+  type: ExtraLineType;
+  p1: string;
+  p2?: string;
+  refLineP1?: string;
+  refLineP2?: string;
+  style: 'solid' | 'dashed';
+  color: string;
+  strokeWidth: number;
+  length?: number;
+  hasRightAngle?: boolean;
+}
+
+export type ExtraShapeType =
+  | 'circle_center_radius'
+  | 'circle_center_point'
+  | 'circumcircle'
+  | 'incircle'
+  | 'polygon_cross_section';
+
+export interface ExtraShape {
+  id: string;
+  type: ExtraShapeType;
+  center?: string;
+  through?: string;
+  radius?: number;
+  pts?: string[];
+  style: 'solid' | 'dashed';
+  color: string;
+  fill?: string;
+  strokeWidth: number;
+}
+
 export const ANGLE_MARK_OPTIONS: { key: AngleMarkType; label: string; iconLabel: string }[] = [
   { key: 'none', label: 'Không', iconLabel: '—' },
   { key: 'arc1', label: '1 vòng cung', iconLabel: ')' },
@@ -355,6 +422,296 @@ export function getLineIntersection(P1: Point, P2: Point, P3: Point, P4: Point):
     x: P1.x + t * (P2.x - P1.x),
     y: P1.y + t * (P2.y - P1.y)
   };
+}
+
+/**
+ * Computes midpoint between two points
+ */
+export function getMidpoint(p1: Point, p2: Point): Point {
+  return {
+    x: (p1.x + p2.x) / 2,
+    y: (p1.y + p2.y) / 2
+  };
+}
+
+/**
+ * Computes ratio point on segment P1P2 such that vector(P1, P) = ratio * vector(P1, P2)
+ */
+export function getRatioPoint(p1: Point, p2: Point, ratio: number = 0.5): Point {
+  return {
+    x: p1.x + ratio * (p2.x - p1.x),
+    y: p1.y + ratio * (p2.y - p1.y)
+  };
+}
+
+/**
+ * Computes centroid of triangle (P1, P2, P3)
+ */
+export function getCentroid(p1: Point, p2: Point, p3: Point): Point {
+  return {
+    x: (p1.x + p2.x + p3.x) / 3,
+    y: (p1.y + p2.y + p3.y) / 3
+  };
+}
+
+/**
+ * Computes circumcenter of triangle (A, B, C)
+ */
+export function getCircumcenter(A: Point, B: Point, C: Point): Point {
+  const D = 2 * (A.x * (B.y - C.y) + B.x * (C.y - A.y) + C.x * (A.y - B.y));
+  if (Math.abs(D) < 1e-5) return getCentroid(A, B, C);
+  const A2 = A.x * A.x + A.y * A.y;
+  const B2 = B.x * B.x + B.y * B.y;
+  const C2 = C.x * C.x + C.y * C.y;
+  const Ux = (A2 * (B.y - C.y) + B2 * (C.y - A.y) + C2 * (A.y - B.y)) / D;
+  const Uy = (A2 * (C.x - B.x) + B2 * (A.x - C.x) + C2 * (B.x - A.x)) / D;
+  return { x: Ux, y: Uy };
+}
+
+/**
+ * Computes incenter of triangle (A, B, C)
+ */
+export function getIncenter(A: Point, B: Point, C: Point): Point {
+  const a = Math.hypot(B.x - C.x, B.y - C.y) || 1;
+  const b = Math.hypot(A.x - C.x, A.y - C.y) || 1;
+  const c = Math.hypot(A.x - B.x, A.y - B.y) || 1;
+  const p = a + b + c;
+  return {
+    x: (a * A.x + b * B.x + c * C.x) / p,
+    y: (a * A.y + b * B.y + c * C.y) / p
+  };
+}
+
+/**
+ * Computes orthocenter of triangle (A, B, C)
+ */
+export function getOrthocenter(A: Point, B: Point, C: Point): Point {
+  const H_A = getProjection(A, B, C);
+  const H_B = getProjection(B, A, C);
+  const inter = getLineIntersection(A, H_A, B, H_B);
+  if (inter) return inter;
+  return getCentroid(A, B, C);
+}
+
+/**
+ * Computes circumcircle (center and radius) of triangle (A, B, C)
+ */
+export function getTriangleCircumcircle(A: Point, B: Point, C: Point): { center: Point; radius: number } {
+  const center = getCircumcenter(A, B, C);
+  const radius = Math.hypot(center.x - A.x, center.y - A.y);
+  return { center, radius };
+}
+
+/**
+ * Computes incircle (center and radius) of triangle (A, B, C)
+ */
+export function getTriangleIncircle(A: Point, B: Point, C: Point): { center: Point; radius: number } {
+  const a = Math.hypot(B.x - C.x, B.y - C.y);
+  const b = Math.hypot(A.x - C.x, A.y - C.y);
+  const c = Math.hypot(A.x - B.x, A.y - B.y);
+  const s = (a + b + c) / 2;
+  const area = Math.abs(getSignedArea2D(A, B, C)) / 2;
+  const radius = s > 0 ? area / s : 10;
+  const center = getIncenter(A, B, C);
+  return { center, radius };
+}
+
+/**
+ * Computes endpoints of a segment passing through P and parallel to AB
+ */
+export function getParallelEndpoints(P: Point, A: Point, B: Point, length: number = 60): { p1: Point; p2: Point } {
+  const dx = B.x - A.x;
+  const dy = B.y - A.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const half = length / 2;
+  return {
+    p1: { x: P.x - ux * half, y: P.y - uy * half },
+    p2: { x: P.x + ux * half, y: P.y + uy * half }
+  };
+}
+
+/**
+ * Computes endpoints of a segment passing through P and perpendicular to AB
+ */
+export function getPerpendicularEndpoints(P: Point, A: Point, B: Point, length: number = 60): { p1: Point; p2: Point } {
+  const dx = B.x - A.x;
+  const dy = B.y - A.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const half = length / 2;
+  return {
+    p1: { x: P.x - nx * half, y: P.y - ny * half },
+    p2: { x: P.x + nx * half, y: P.y + ny * half }
+  };
+}
+
+/**
+ * Computes extended endpoints of segment P1P2 extending beyond both ends
+ */
+export function getExtendedEndpoints(p1: Point, p2: Point, ext1: number = 25, ext2: number = 25): { start: Point; end: Point } {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  return {
+    start: { x: p1.x - ux * ext1, y: p1.y - uy * ext1 },
+    end: { x: p2.x + ux * ext2, y: p2.y + uy * ext2 }
+  };
+}
+
+export interface RenderedExtraResult {
+  svgContent: string;
+  resolvedPointMap: Record<string, Point>;
+  extraDraggableVertices: {
+    id: string;
+    pt: Point;
+    label: string;
+    labelOffset: { x: number; y: number };
+    color?: string;
+  }[];
+}
+
+/**
+ * Recalculates and renders all user-added extra points, lines, and shapes dynamically
+ */
+export function renderExtraElements(
+  extraPoints: ExtraPoint[],
+  extraLines: ExtraLine[],
+  extraShapes: ExtraShape[],
+  basePointMap: Record<string, Point>,
+  customPoints?: Record<string, Point>
+): RenderedExtraResult {
+  const resolvedPointMap: Record<string, Point> = { ...basePointMap };
+  const extraDraggableVertices: {
+    id: string;
+    pt: Point;
+    label: string;
+    labelOffset: { x: number; y: number };
+    color?: string;
+  }[] = [];
+
+  let shapesSvg = '';
+  let linesSvg = '';
+  let pointsSvg = '';
+
+  // 1. Resolve Extra Points (2 passes to resolve chained geometric dependencies)
+  for (let pass = 0; pass < 2; pass++) {
+    for (const p of extraPoints) {
+      if (p.type === 'midpoint' && p.pt1 && p.pt2 && resolvedPointMap[p.pt1] && resolvedPointMap[p.pt2]) {
+        resolvedPointMap[p.id] = getMidpoint(resolvedPointMap[p.pt1], resolvedPointMap[p.pt2]);
+      } else if (p.type === 'centroid' && p.pt1 && p.pt2 && p.pt3 && resolvedPointMap[p.pt1] && resolvedPointMap[p.pt2] && resolvedPointMap[p.pt3]) {
+        resolvedPointMap[p.id] = getCentroid(resolvedPointMap[p.pt1], resolvedPointMap[p.pt2], resolvedPointMap[p.pt3]);
+      } else if (p.type === 'orthocenter' && p.pt1 && p.pt2 && p.pt3 && resolvedPointMap[p.pt1] && resolvedPointMap[p.pt2] && resolvedPointMap[p.pt3]) {
+        resolvedPointMap[p.id] = getOrthocenter(resolvedPointMap[p.pt1], resolvedPointMap[p.pt2], resolvedPointMap[p.pt3]);
+      } else if (p.type === 'circumcenter' && p.pt1 && p.pt2 && p.pt3 && resolvedPointMap[p.pt1] && resolvedPointMap[p.pt2] && resolvedPointMap[p.pt3]) {
+        resolvedPointMap[p.id] = getCircumcenter(resolvedPointMap[p.pt1], resolvedPointMap[p.pt2], resolvedPointMap[p.pt3]);
+      } else if (p.type === 'incenter' && p.pt1 && p.pt2 && p.pt3 && resolvedPointMap[p.pt1] && resolvedPointMap[p.pt2] && resolvedPointMap[p.pt3]) {
+        resolvedPointMap[p.id] = getIncenter(resolvedPointMap[p.pt1], resolvedPointMap[p.pt2], resolvedPointMap[p.pt3]);
+      } else if (p.type === 'projection' && p.fromPt && p.ontoLineP1 && p.ontoLineP2 && resolvedPointMap[p.fromPt] && resolvedPointMap[p.ontoLineP1] && resolvedPointMap[p.ontoLineP2]) {
+        resolvedPointMap[p.id] = getProjection(resolvedPointMap[p.fromPt], resolvedPointMap[p.ontoLineP1], resolvedPointMap[p.ontoLineP2]);
+      } else if (p.type === 'intersection' && p.line1P1 && p.line1P2 && p.line2P1 && p.line2P2 && resolvedPointMap[p.line1P1] && resolvedPointMap[p.line1P2] && resolvedPointMap[p.line2P1] && resolvedPointMap[p.line2P2]) {
+        const inter = getLineIntersection(resolvedPointMap[p.line1P1], resolvedPointMap[p.line1P2], resolvedPointMap[p.line2P1], resolvedPointMap[p.line2P2]);
+        if (inter) resolvedPointMap[p.id] = inter;
+      } else if (p.type === 'ratio' && p.pt1 && p.pt2 && resolvedPointMap[p.pt1] && resolvedPointMap[p.pt2]) {
+        resolvedPointMap[p.id] = getRatioPoint(resolvedPointMap[p.pt1], resolvedPointMap[p.pt2], p.ratio ?? 0.5);
+      } else if (p.type === 'free') {
+        resolvedPointMap[p.id] = (customPoints && customPoints[p.id]) || p.fixedPt || { x: 155, y: 115 };
+      }
+    }
+  }
+
+  // 2. Render Extra Shapes (Fills and circles behind lines)
+  for (const s of extraShapes) {
+    const dashAttr = s.style === 'dashed' ? 'stroke-dasharray="4 4"' : '';
+    const sw = s.strokeWidth || 1.6;
+    const col = s.color || '#0f6cbd';
+    const fillCol = s.fill || 'none';
+
+    if (s.type === 'polygon_cross_section' && s.pts && s.pts.length >= 3) {
+      const validPts = s.pts.map(id => resolvedPointMap[id]).filter(Boolean);
+      if (validPts.length >= 3) {
+        const ptsStr = validPts.map(pt => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' ');
+        shapesSvg += `<polygon points="${ptsStr}" fill="${fillCol !== 'none' ? fillCol : 'rgba(209, 52, 56, 0.18)'}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+      }
+    } else if (s.type === 'circle_center_point' && s.center && s.through && resolvedPointMap[s.center] && resolvedPointMap[s.through]) {
+      const c = resolvedPointMap[s.center];
+      const t = resolvedPointMap[s.through];
+      const r = Math.hypot(t.x - c.x, t.y - c.y);
+      shapesSvg += `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="${r.toFixed(1)}" fill="${fillCol}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+    } else if (s.type === 'circle_center_radius' && s.center && resolvedPointMap[s.center]) {
+      const c = resolvedPointMap[s.center];
+      const r = s.radius || 40;
+      shapesSvg += `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="${r.toFixed(1)}" fill="${fillCol}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+    } else if (s.type === 'circumcircle' && s.pts && s.pts.length >= 3 && resolvedPointMap[s.pts[0]] && resolvedPointMap[s.pts[1]] && resolvedPointMap[s.pts[2]]) {
+      const { center, radius } = getTriangleCircumcircle(resolvedPointMap[s.pts[0]], resolvedPointMap[s.pts[1]], resolvedPointMap[s.pts[2]]);
+      shapesSvg += `<circle cx="${center.x.toFixed(1)}" cy="${center.y.toFixed(1)}" r="${radius.toFixed(1)}" fill="${fillCol}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+    } else if (s.type === 'incircle' && s.pts && s.pts.length >= 3 && resolvedPointMap[s.pts[0]] && resolvedPointMap[s.pts[1]] && resolvedPointMap[s.pts[2]]) {
+      const { center, radius } = getTriangleIncircle(resolvedPointMap[s.pts[0]], resolvedPointMap[s.pts[1]], resolvedPointMap[s.pts[2]]);
+      shapesSvg += `<circle cx="${center.x.toFixed(1)}" cy="${center.y.toFixed(1)}" r="${radius.toFixed(1)}" fill="${fillCol}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+    }
+  }
+
+  // 3. Render Extra Lines
+  for (const l of extraLines) {
+    const dashAttr = l.style === 'dashed' ? 'stroke-dasharray="4 4"' : '';
+    const sw = l.strokeWidth || 1.8;
+    const col = l.color || '#d13438';
+
+    if (l.type === 'segment' && l.p1 && l.p2 && resolvedPointMap[l.p1] && resolvedPointMap[l.p2]) {
+      const pt1 = resolvedPointMap[l.p1];
+      const pt2 = resolvedPointMap[l.p2];
+      linesSvg += `<line x1="${pt1.x.toFixed(1)}" y1="${pt1.y.toFixed(1)}" x2="${pt2.x.toFixed(1)}" y2="${pt2.y.toFixed(1)}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+    } else if (l.type === 'line' && l.p1 && l.p2 && resolvedPointMap[l.p1] && resolvedPointMap[l.p2]) {
+      const ext = getExtendedEndpoints(resolvedPointMap[l.p1], resolvedPointMap[l.p2], l.length || 25, l.length || 25);
+      linesSvg += `<line x1="${ext.start.x.toFixed(1)}" y1="${ext.start.y.toFixed(1)}" x2="${ext.end.x.toFixed(1)}" y2="${ext.end.y.toFixed(1)}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+    } else if (l.type === 'parallel' && l.p1 && l.refLineP1 && l.refLineP2 && resolvedPointMap[l.p1] && resolvedPointMap[l.refLineP1] && resolvedPointMap[l.refLineP2]) {
+      const ends = getParallelEndpoints(resolvedPointMap[l.p1], resolvedPointMap[l.refLineP1], resolvedPointMap[l.refLineP2], l.length || 70);
+      linesSvg += `<line x1="${ends.p1.x.toFixed(1)}" y1="${ends.p1.y.toFixed(1)}" x2="${ends.p2.x.toFixed(1)}" y2="${ends.p2.y.toFixed(1)}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+    } else if (l.type === 'perpendicular' && l.p1 && l.refLineP1 && l.refLineP2 && resolvedPointMap[l.p1] && resolvedPointMap[l.refLineP1] && resolvedPointMap[l.refLineP2]) {
+      const P = resolvedPointMap[l.p1];
+      const A = resolvedPointMap[l.refLineP1];
+      const B = resolvedPointMap[l.refLineP2];
+      const H = getProjection(P, A, B);
+      linesSvg += `<line x1="${P.x.toFixed(1)}" y1="${P.y.toFixed(1)}" x2="${H.x.toFixed(1)}" y2="${H.y.toFixed(1)}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+      if (l.hasRightAngle) {
+        linesSvg += getRightAngleMark(H, P, B, 11, col) + '\n';
+      }
+    }
+  }
+
+  // 4. Render Points and Labels
+  const textStyle = 'font-family="Cambria Math, Times New Roman, serif" font-size="13" font-style="italic" font-weight="bold" fill="#242424"';
+  for (const p of extraPoints) {
+    const pt = resolvedPointMap[p.id];
+    if (!pt) continue;
+
+    const offset = p.labelOffset || { x: 7, y: -7 };
+    const col = p.color || '#d13438';
+
+    // If free point, make it draggable handle
+    if (p.type === 'free') {
+      extraDraggableVertices.push({
+        id: p.id,
+        pt,
+        label: p.label,
+        labelOffset: offset,
+        color: col
+      });
+    } else {
+      // Derived point: render static dot and label into svgContent
+      pointsSvg += `
+        <circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="2.8" fill="${col}" />
+        <text x="${(pt.x + offset.x).toFixed(1)}" y="${(pt.y + offset.y).toFixed(1)}" ${textStyle}>${p.label}</text>
+      `;
+    }
+  }
+
+  const svgContent = `${shapesSvg}${linesSvg}${pointsSvg}`;
+  return { svgContent, resolvedPointMap, extraDraggableVertices };
 }
 
 /**
