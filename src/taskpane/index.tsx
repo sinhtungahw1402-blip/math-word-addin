@@ -1,23 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { MemoryRouter } from 'react-router-dom';
 import { FluentProvider, webLightTheme } from '@fluentui/react-components';
 import { AppContent } from './App';
 
-// Polyfill window.history in environments where Office.js or browser sandbox modifies it
-if (typeof window !== 'undefined') {
-  if (!window.history) {
-    (window as any).history = {};
-  }
-  if (typeof window.history.replaceState !== 'function') {
-    window.history.replaceState = function () {};
-  }
-  if (typeof window.history.pushState !== 'function') {
-    window.history.pushState = function () {};
-  }
-}
-
-console.log("[MathAddin] index.tsx đang chạy...");
+console.log("[MathAddin] index.tsx đang khởi động...");
 
 const rootElement = document.getElementById('root');
 
@@ -25,22 +11,16 @@ if (rootElement) {
   try {
     const root = ReactDOM.createRoot(rootElement);
 
-    // Read initial tool view from URL search query (e.g. ?view=plane-geometry from Ribbon)
-    const queryParams = new URLSearchParams(window.location.search);
-    const initialView = queryParams.get('view') || 'formula';
-
     const renderApp = () => {
       try {
         root.render(
           <React.StrictMode>
             <FluentProvider theme={webLightTheme}>
-              <MemoryRouter initialEntries={[`/${initialView}`]}>
-                <AppContent />
-              </MemoryRouter>
+              <AppContent />
             </FluentProvider>
           </React.StrictMode>
         );
-        console.log("[MathAddin] Đã render MemoryRouter thành công.");
+        console.log("[MathAddin] Render AppContent thành công.");
       } catch (renderErr: any) {
         console.error("[MathAddin] Lỗi renderApp:", renderErr);
         const errBox = document.getElementById('js-error-box');
@@ -51,14 +31,13 @@ if (rootElement) {
       }
     };
 
-    // Render immediately so the UI is visible in browser preview & Word
+    // Render immediately so UI is loaded fast
     renderApp();
 
-    // Also hook into Office.onReady when running inside Word
+    // Hook into Office.onReady when running inside Microsoft Word
     if (typeof Office !== 'undefined' && Office.onReady) {
       Office.onReady((info) => {
-        console.log(`[MathAddin] Office.js đã sẵn sàng. Host: ${info?.host}, Platform: ${info?.platform}`);
-        renderApp();
+        console.log(`[MathAddin] Office.js đã kết nối. Host: ${info?.host}, Platform: ${info?.platform}`);
       });
     }
   } catch (initErr: any) {

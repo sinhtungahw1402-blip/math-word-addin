@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Routes,
-  Route,
-  useNavigate,
-  useLocation
-} from 'react-router-dom';
-import {
   TabList,
   Tab,
   SelectTabData,
@@ -99,29 +93,56 @@ const useStyles = makeStyles({
 
 export const AppContent: React.FC = () => {
   const styles = useStyles();
-  const navigate = useNavigate();
-  const location = useLocation();
+
+  // Read initial tab from URL (?view=plane-geometry, etc.)
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    try {
+      const queryParams = new URLSearchParams(window.location.search);
+      const view = queryParams.get('view');
+      if (view) return view;
+    } catch (e) {
+      console.warn('[MathAddin] Lỗi đọc URL params:', e);
+    }
+    return 'formula';
+  });
 
   const [connected, setConnected] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Sync route with Ribbon parameter ?view=... or current path
   useEffect(() => {
-    const isWord = isWordHost();
-    setConnected(isWord);
+    setConnected(isWordHost());
 
-    const queryParams = new URLSearchParams(window.location.search);
-    const view = queryParams.get('view');
-    if (view) {
-      navigate(`/${view}`, { replace: true });
-    }
-  }, [navigate]);
+    // Listen to URL search parameter changes if Word navigates the iframe
+    const handleLocationChange = () => {
+      try {
+        const queryParams = new URLSearchParams(window.location.search);
+        const view = queryParams.get('view');
+        if (view && view !== activeTab) {
+          console.log('[MathAddin] URL view changed to:', view);
+          setActiveTab(view);
+        }
+      } catch (e) {}
+    };
 
-  // Determine current active tab key based on pathname
-  const activeTab = location.pathname.replace('/', '') || 'formula';
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
+  }, [activeTab]);
 
   const handleTabSelect = (_event: SelectTabEvent, data: SelectTabData) => {
-    navigate(`/${data.value}`);
+    if (data.value) {
+      const newTab = String(data.value);
+      console.log('[MathAddin] Chuyển sang tab:', newTab);
+      setActiveTab(newTab);
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('view', newTab);
+        window.history.replaceState(null, '', url.toString());
+      } catch (e) {}
+    }
   };
 
   // Milestone 1 test function
@@ -207,18 +228,22 @@ export const AppContent: React.FC = () => {
         </TabList>
       </div>
 
-      {/* Main Content Area switched by React Router */}
+      {/* Main Content Area switched directly by React State */}
       <div className={styles.contentArea}>
-        <Routes>
-          <Route path="/" element={<FormulaEditor />} />
-          <Route path="/formula" element={<FormulaEditor />} />
-          <Route path="/plane-geometry" element={<PlaneGeometryEditor />} />
-          <Route path="/space-geometry" element={<SpaceGeometryEditor />} />
-          <Route path="/variation-table" element={<VariationTableGenerator />} />
-          <Route path="/graph-plotter" element={<GraphPlotter />} />
-          <Route path="/shape-gallery" element={<ShapeGallery />} />
-          <Route path="*" element={<FormulaEditor />} />
-        </Routes>
+        {activeTab === 'formula' && <FormulaEditor />}
+        {activeTab === 'plane-geometry' && <PlaneGeometryEditor />}
+        {activeTab === 'space-geometry' && <SpaceGeometryEditor />}
+        {activeTab === 'variation-table' && <VariationTableGenerator />}
+        {activeTab === 'graph-plotter' && <GraphPlotter />}
+        {activeTab === 'shape-gallery' && <ShapeGallery />}
+        {![
+          'formula',
+          'plane-geometry',
+          'space-geometry',
+          'variation-table',
+          'graph-plotter',
+          'shape-gallery'
+        ].includes(activeTab) && <FormulaEditor />}
       </div>
 
       <div className={styles.footer}>
