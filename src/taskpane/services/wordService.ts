@@ -1,4 +1,5 @@
 import katex from 'katex';
+import { mml2omml } from 'mathml2omml';
 
 /**
  * Office.js Word Service
@@ -61,10 +62,65 @@ export async function insertHelloMath(): Promise<InsertionResult> {
 }
 
 /**
- * Inserts a native Word Equation from LaTeX using MathML conversion
- * Word automatically parses standard MathML into native Word Equations (OMML)
+ * Converts a LaTeX formula into clean MathML
  */
-export async function insertMathEquation(latex: string): Promise<InsertionResult> {
+export function latexToMathML(latex: string): string {
+  const rawMathML = katex.renderToString(latex, {
+    output: 'mathml',
+    throwOnError: false
+  });
+  const cleanMathML = rawMathML
+    .replace(/<annotation[^>]*>[\s\S]*?<\/annotation>/gi, '')
+    .replace(/<annotation-xml[^>]*>[\s\S]*?<\/annotation-xml>/gi, '');
+  const match = cleanMathML.match(/<math[\s\S]*?<\/math>/i);
+  return match ? match[0] : rawMathML;
+}
+
+/**
+ * Converts a LaTeX formula into Word OMML (Office Math Markup Language)
+ */
+export function latexToOmml(latex: string): string {
+  const mathml = latexToMathML(latex);
+  const omml = mml2omml(mathml);
+  return omml;
+}
+
+/**
+ * Wraps OMML into a complete flat OPC OpenXML package for Word insertOoxml
+ */
+export function buildOoxmlPackage(ommlXml: string, isInline = false): string {
+  const mathContent = isInline ? ommlXml : `<m:oMathPara>${ommlXml}</m:oMathPara>`;
+
+  return `<?xml version="1.0" standalone="yes"?>
+<?mso-application progid="Word.Document"?>
+<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">
+  <pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml" pkg:padding="512">
+    <pkg:xmlData>
+      <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+        <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+      </Relationships>
+    </pkg:xmlData>
+  </pkg:part>
+  <pkg:part pkg:name="/word/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml">
+    <pkg:xmlData>
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">
+        <w:body>
+          <w:p>
+            ${mathContent}
+          </w:p>
+        </w:body>
+      </w:document>
+    </pkg:xmlData>
+  </pkg:part>
+</pkg:package>`;
+}
+
+/**
+ * Inserts a native Word Equation from LaTeX using OMML OOXML
+ * Directly injects native OMML Office Math into Word document.
+ * Works on ALL desktop Word versions (Word 2013, 2016, 2019, 2021, Office 365).
+ */
+export async function insertMathEquation(latex: string, isInline = false): Promise<InsertionResult> {
   if (!isWordHost()) {
     return {
       success: false,
@@ -73,29 +129,25 @@ export async function insertMathEquation(latex: string): Promise<InsertionResult
   }
 
   try {
-    const mathmlHtml = katex.renderToString(latex, {
-      output: 'mathml',
-      throwOnError: false
-    });
-
-    const htmlToInsert = `
-      <p style="margin: 6pt 0; text-align: left; font-family: 'Cambria Math', 'Times New Roman', serif;">
-        ${mathmlHtml}
-      </p>
-    `;
+    const omml = latexToOmml(latex);
+    const ooxmlPackage = buildOoxmlPackage(omml, isInline);
 
     await Word.run(async (context) => {
       const selection = context.document.getSelection();
-      selection.insertHtml(htmlToInsert, Word.InsertLocation.replace);
+      selection.insertOoxml(ooxmlPackage, Word.InsertLocation.replace);
       await context.sync();
     });
 
     return {
       success: true,
-      message: 'Đã chèn công thức chuẩn Word Equation thành công!'
+      message: isInline
+        ? 'Đã chèn công thức chuẩn Word Equation (trong dòng) thành công!'
+        : 'Đã chèn công thức chuẩn Word Equation (OMML) thành công!'
     };
   } catch (error: any) {
-    console.error('Lỗi insertMathEquation:', error);
+    console.error('Lỗi insertMathEquation (OOXML):', error);
+
+    // Fallback: If OOXML fails, try inserting text
     try {
       await Word.run(async (context) => {
         const selection = context.document.getSelection();
@@ -104,7 +156,7 @@ export async function insertMathEquation(latex: string): Promise<InsertionResult
       });
       return {
         success: true,
-        message: 'Đã chèn công thức dạng văn bản.'
+        message: 'Đã chèn công thức dạng văn bản (LaTeX).'
       };
     } catch {
       return {

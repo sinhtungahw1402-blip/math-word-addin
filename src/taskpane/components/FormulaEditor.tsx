@@ -31,7 +31,7 @@ import {
   CursorClick20Regular,
   Search20Regular
 } from '@fluentui/react-icons';
-import { insertMathEquation } from '../services/wordService';
+import { insertMathEquation, latexToMathML } from '../services/wordService';
 
 // Configure MathLive fonts directory to use bundled offline fonts in /fonts
 if (typeof window !== 'undefined') {
@@ -565,7 +565,8 @@ export const FormulaEditor: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [latexInput, setLatexInput] = useState<string>('x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}');
   const [status, setStatus] = useState<string>('');
-  const [copied, setCopied] = useState<boolean>(false);
+  const [copiedLatex, setCopiedLatex] = useState<boolean>(false);
+  const [copiedMathML, setCopiedMathML] = useState<boolean>(false);
 
   // Active focus target: 'mathfield' (visual preview box) or 'textarea' (LaTeX code)
   const [activeFocus, setActiveFocus] = useState<'mathfield' | 'textarea'>('mathfield');
@@ -713,17 +714,35 @@ export const FormulaEditor: React.FC = () => {
     };
   };
 
-  const handleInsertToWord = async () => {
+  const handleInsertDisplay = async () => {
     if (!latexInput.trim()) return;
-    setStatus('Đang gửi công thức vào Word...');
-    const res = await insertMathEquation(latexInput);
+    setStatus('Đang tạo công thức chuẩn Word Equation (OMML)...');
+    const res = await insertMathEquation(latexInput, false);
+    setStatus(res.message);
+  };
+
+  const handleInsertInline = async () => {
+    if (!latexInput.trim()) return;
+    setStatus('Đang chèn công thức trong dòng...');
+    const res = await insertMathEquation(latexInput, true);
     setStatus(res.message);
   };
 
   const handleCopyLatex = () => {
     navigator.clipboard.writeText(latexInput);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopiedLatex(true);
+    setTimeout(() => setCopiedLatex(false), 2000);
+  };
+
+  const handleCopyMathML = () => {
+    try {
+      const mathml = latexToMathML(latexInput);
+      navigator.clipboard.writeText(mathml);
+      setCopiedMathML(true);
+      setTimeout(() => setCopiedMathML(false), 2000);
+    } catch {
+      setStatus('Lỗi sao chép MathML');
+    }
   };
 
   // Filter templates across categories if searching
@@ -931,34 +950,57 @@ export const FormulaEditor: React.FC = () => {
         </Field>
 
         {/* Bottom Actions */}
-        <div className={styles.actions}>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <Button
-              size="small"
-              appearance="subtle"
-              icon={<Delete20Regular />}
-              onClick={handleClear}
-            >
-              Xóa hết
-            </Button>
-            <Button
-              size="small"
-              appearance="subtle"
-              icon={copied ? <Checkmark20Regular style={{ color: 'green' }} /> : <Copy20Regular />}
-              onClick={handleCopyLatex}
-            >
-              {copied ? 'Đã chép!' : 'Chép LaTeX'}
-            </Button>
-          </div>
+        <div className={styles.actions} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '6px' }}>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <Button
+                size="small"
+                appearance="subtle"
+                icon={<Delete20Regular />}
+                onClick={handleClear}
+              >
+                Xóa hết
+              </Button>
+              <Button
+                size="small"
+                appearance="subtle"
+                icon={copiedLatex ? <Checkmark20Regular style={{ color: 'green' }} /> : <Copy20Regular />}
+                onClick={handleCopyLatex}
+              >
+                {copiedLatex ? 'Đã chép LaTeX!' : 'Chép LaTeX'}
+              </Button>
+              <Button
+                size="small"
+                appearance="subtle"
+                icon={copiedMathML ? <Checkmark20Regular style={{ color: 'green' }} /> : <Copy20Regular />}
+                onClick={handleCopyMathML}
+                title="Sao chép MathML chuẩn (Dán trực tiếp Ctrl+V vào Word)"
+              >
+                {copiedMathML ? 'Đã chép MathML!' : 'Chép MathML'}
+              </Button>
+            </div>
 
-          <Button
-            appearance="primary"
-            size="medium"
-            icon={<Add20Regular />}
-            onClick={handleInsertToWord}
-          >
-            Chèn Equation vào Word
-          </Button>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <Button
+                appearance="secondary"
+                size="medium"
+                icon={<Add20Regular />}
+                onClick={handleInsertInline}
+                title="Chèn công thức nằm trong cùng dòng văn bản (inline equation)"
+              >
+                Chèn trong dòng (Inline)
+              </Button>
+              <Button
+                appearance="primary"
+                size="medium"
+                icon={<Add20Regular />}
+                onClick={handleInsertDisplay}
+                title="Chèn công thức chuẩn Microsoft Word Equation (OMML)"
+              >
+                Chèn Equation vào Word
+              </Button>
+            </div>
+          </div>
         </div>
 
         {status && (
