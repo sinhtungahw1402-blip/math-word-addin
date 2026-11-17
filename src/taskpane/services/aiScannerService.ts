@@ -249,6 +249,79 @@ export function normalizeMathLimits(code: string): string {
 }
 
 /**
+ * Auto-wraps orphan LaTeX math commands outside $...$ (e.g. raw "\frac{1}{2}", "\lim_{...}", "-\infty")
+ */
+function wrapOrphanLatex(text: string): string {
+  if (!text || !text.includes('\\')) return text;
+
+  const parts = text.split(/(\$\$[\s\S]+?\$\$|\$[^\$]+?\$)/g);
+
+  const processed = parts.map((part) => {
+    if (part.startsWith('$')) return part;
+    if (!part.includes('\\')) return part;
+
+    return part.replace(
+      /(?:(?:[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*)?[-+]?\s*\\(?:frac|sqrt|lim|sum|prod|int|vec|alpha|beta|gamma|delta|pi|infty|pm|mp|le|ge|ne|approx|subset|cup|cap|to|forall|exists)(?:[a-zA-Z0-9_\^\+\-\*\/\=\(\)\[\]\{\}\\\s,;]*[a-zA-Z0-9_\^\+\-\*\/\=\(\)\[\]\}\\\)])?)/g,
+      (match) => {
+        const leadingSpace = match.match(/^\s*/)?.[0] || '';
+        const trailingSpace = match.match(/\s*$/)?.[0] || '';
+        const trimmed = match.trim();
+        const words = trimmed.split(/\s+/);
+        const hasPlainWords = words.some(
+          (w) =>
+            /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(w) ||
+            (/[a-zA-Z]{5,}/.test(w) && !w.includes('\\'))
+        );
+        if (hasPlainWords) return match;
+        return leadingSpace + '$' + trimmed + '$' + trailingSpace;
+      }
+    );
+  });
+
+  return processed.join('');
+}
+
+/**
+ * Comprehensive preprocessor for math formulas:
+ * 1. Balances unpaired single dollar signs (e.g. unclosed "$S = 1 - \frac{1}{2} + ...")
+ * 2. Auto-wraps orphan LaTeX expressions outside $...$ (e.g. raw "\frac{1}{2}", "\lim_{...}")
+ * 3. Replaces 3+ raw dots with standard LaTeX \dots inside math expressions
+ * 4. Normalizes operators to \limits (\lim\limits, \max\limits, \min\limits, \sum\limits, etc.)
+ */
+export function repairAndNormalizeText(text: string): string {
+  if (!text) return '';
+
+  // 1. Balance unpaired single dollar signs line-by-line
+  const lines = text.split(/\r?\n/);
+  const balancedLines = lines.map((line) => {
+    const withoutDisplay = line.replace(/\$\$[\s\S]*?\$\$/g, '');
+    const count = (withoutDisplay.match(/(?<!\\)\$/g) || []).length;
+    if (count % 2 !== 0) {
+      // Check if line ends with punctuation (?, !, :, or single period not preceded by dot)
+      const puncMatch = line.match(/(?<=[^\.])([\?!:]|\.(?!\.))\s*$/);
+      if (puncMatch) {
+        const idx = line.lastIndexOf(puncMatch[1]);
+        return line.substring(0, idx).trimEnd() + '$' + line.substring(idx);
+      }
+      return line.trimEnd() + '$';
+    }
+    return line;
+  });
+  const step1 = balancedLines.join('\n');
+
+  // 2. Auto-wrap orphan LaTeX commands outside $
+  const step2 = wrapOrphanLatex(step1);
+
+  // 3. Inside math expressions, replace 3+ raw dots with \dots
+  const step3 = step2.replace(/(\$[^\$]+?\$)/g, (mathMatch) => {
+    return mathMatch.replace(/\.{3,}/g, '\\dots ');
+  });
+
+  // 4. Normalize limits (\lim\limits)
+  return normalizeMathLimits(step3);
+}
+
+/**
  * Parses raw AI text response (from API or pasted from Gemini Web) into structured DocumentBlocks
  */
 export function parseAiTextResponse(rawText: string): ScanResult {
@@ -268,7 +341,7 @@ export function parseAiTextResponse(rawText: string): ScanResult {
           blocks: parsed.blocks.map((b: any, idx: number) => ({
             id: `block_${Date.now()}_${idx}`,
             type: b.type === 'image' ? 'image' : 'paragraph',
-            content: normalizeMathLimits((b.content || '').replace(/\\n/g, '\n')),
+            content: repairAndNormalizeText((b.content || '').replace(/\\n/g, '\n')),
             caption: b.caption || '',
             box_2d: Array.isArray(b.box_2d) && b.box_2d.length === 4 ? b.box_2d : undefined
           }))
@@ -286,7 +359,7 @@ export function parseAiTextResponse(rawText: string): ScanResult {
           blocks: parsed.blocks.map((b: any, idx: number) => ({
             id: `block_${Date.now()}_${idx}`,
             type: b.type === 'image' ? 'image' : 'paragraph',
-            content: normalizeMathLimits((b.content || '').replace(/\\n/g, '\n')),
+            content: repairAndNormalizeText((b.content || '').replace(/\\n/g, '\n')),
             caption: b.caption || '',
             box_2d: Array.isArray(b.box_2d) && b.box_2d.length === 4 ? b.box_2d : undefined
           }))
@@ -323,7 +396,7 @@ export function parseAiTextResponse(rawText: string): ScanResult {
         blocks.push({
           id: `block_${Date.now()}_${blocks.length}`,
           type,
-          content: normalizeMathLimits(content),
+          content: repairAndNormalizeText(content),
           caption,
           box_2d
         });
@@ -351,7 +424,7 @@ export function parseAiTextResponse(rawText: string): ScanResult {
   const blocks: DocumentBlock[] = lines.map((line, idx) => ({
     id: `block_${Date.now()}_${idx}`,
     type: 'paragraph',
-    content: normalizeMathLimits(line.trim().replace(/\\n/g, '\n'))
+    content: repairAndNormalizeText(line.trim().replace(/\\n/g, '\n'))
   }));
 
   return {
@@ -577,7 +650,7 @@ export function convertMixedTextToOoxmlParagraphs(
   text: string,
   formulaMode: FormulaInsertMode = 'equation'
 ): string {
-  const normalizedText = normalizeMathLimits(text);
+  const normalizedText = repairAndNormalizeText(text);
   const lines = normalizedText.split(/\r?\n/).filter(line => line.trim().length > 0);
   let pXmlList = '';
 

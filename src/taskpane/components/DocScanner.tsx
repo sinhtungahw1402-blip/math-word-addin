@@ -42,7 +42,8 @@ import {
   insertSingleBlockToWord,
   FormulaInsertMode,
   GEMINI_WEB_PROMPT,
-  parseAiTextResponse
+  parseAiTextResponse,
+  repairAndNormalizeText
 } from '../services/aiScannerService';
 
 const useStyles = makeStyles({
@@ -1084,15 +1085,16 @@ export const DocScanner: React.FC = () => {
  */
 function renderTextWithKatexHtml(text: string): string {
   if (!text) return '';
+  const repaired = repairAndNormalizeText(text);
   try {
     const parts: string[] = [];
     let lastIndex = 0;
     const regex = /(\$\$[\s\S]+?\$\$|\$[^\$]+?\$)/g;
     let match: RegExpExecArray | null;
 
-    while ((match = regex.exec(text)) !== null) {
+    while ((match = regex.exec(repaired)) !== null) {
       if (match.index > lastIndex) {
-        parts.push(escapeHtml(text.substring(lastIndex, match.index)));
+        parts.push(escapeHtml(repaired.substring(lastIndex, match.index)));
       }
       const raw = match[0];
       const isDisplay = raw.startsWith('$$');
@@ -1108,8 +1110,8 @@ function renderTextWithKatexHtml(text: string): string {
       }
       lastIndex = regex.lastIndex;
     }
-    if (lastIndex < text.length) {
-      parts.push(escapeHtml(text.substring(lastIndex)));
+    if (lastIndex < repaired.length) {
+      parts.push(escapeHtml(repaired.substring(lastIndex)));
     }
     return parts.join('').replace(/\n/g, '<br/>');
   } catch {
