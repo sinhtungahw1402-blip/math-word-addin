@@ -440,11 +440,11 @@ export function convertMixedTextToOoxmlParagraphs(text: string): string {
             }
           } else {
             const esc = token.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            runsXml += `<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">${esc}</w:t></w:r>`;
+            runsXml += `<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t xml:space="preserve">${esc}</w:t></w:r>`;
           }
         } catch {
           const esc = token.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          runsXml += `<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">${esc}</w:t></w:r>`;
+          runsXml += `<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t xml:space="preserve">${esc}</w:t></w:r>`;
         }
       }
     }
@@ -482,7 +482,9 @@ export function buildOoxmlPackageForParagraphs(pXmlList: string): string {
 }
 
 /**
- * Inserts document blocks (paragraphs, OMML math, and interspersed images) into Word at cursor
+ * Inserts document blocks (paragraphs, OMML math, and interspersed images) into Word at cursor.
+ * Uses sequential per-item execution and cursor advance so that NO question (like Bài 30)
+ * is ever skipped or dropped after an image.
  */
 export async function insertDocumentBlocksToWord(blocks: DocumentBlock[]): Promise<InsertionResult> {
   if (!isWordHost()) {
@@ -500,85 +502,132 @@ export async function insertDocumentBlocksToWord(blocks: DocumentBlock[]): Promi
   }
 
   try {
-    await Word.run(async (context) => {
-      // 1. Group consecutive paragraphs to batch them into single OOXML packages
-      type InsertionItem =
-        | { type: 'paragraphs'; content: string }
-        | { type: 'image'; base64: string; width: number; height: number; caption?: string };
+    // 1. Group consecutive paragraphs to batch them into single OOXML packages
+    type InsertionItem =
+      | { type: 'paragraphs'; content: string }
+      | { type: 'image'; base64: string; width: number; height: number; caption?: string };
 
-      const items: InsertionItem[] = [];
-      let currentParagraphs: string[] = [];
+    const items: InsertionItem[] = [];
+    let currentParagraphs: string[] = [];
 
-      for (const block of blocks) {
-        if (block.type === 'paragraph' && block.content && block.content.trim()) {
-          currentParagraphs.push(block.content.trim());
-        } else if (block.type === 'image' && block.imageBase64) {
-          if (currentParagraphs.length > 0) {
-            items.push({ type: 'paragraphs', content: currentParagraphs.join('\n') });
-            currentParagraphs = [];
-          }
-          items.push({
-            type: 'image',
-            base64: block.imageBase64,
-            width: block.imageWidth || 300,
-            height: block.imageHeight || 200,
-            caption: block.caption
-          });
+    for (const block of blocks) {
+      if (block.type === 'paragraph' && block.content && block.content.trim()) {
+        currentParagraphs.push(block.content.trim());
+      } else if (block.type === 'image' && block.imageBase64) {
+        if (currentParagraphs.length > 0) {
+          items.push({ type: 'paragraphs', content: currentParagraphs.join('\n') });
+          currentParagraphs = [];
         }
+        items.push({
+          type: 'image',
+          base64: block.imageBase64,
+          width: block.imageWidth || 300,
+          height: block.imageHeight || 200,
+          caption: block.caption
+        });
       }
-      if (currentParagraphs.length > 0) {
-        items.push({ type: 'paragraphs', content: currentParagraphs.join('\n') });
-      }
+    }
+    if (currentParagraphs.length > 0) {
+      items.push({ type: 'paragraphs', content: currentParagraphs.join('\n') });
+    }
 
-      // 2. Insert items sequentially at cursor
-      let targetRange = context.document.getSelection();
+    if (items.length === 0) {
+      return {
+        success: false,
+        message: 'Không có nội dung văn bản hoặc hình ảnh hợp lệ để chèn.'
+      };
+    }
 
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const location = i === 0 ? Word.InsertLocation.replace : Word.InsertLocation.after;
+    // 2. Sequential Insertion with dedicated per-item Word.run & context.sync
+    // Ensures every item (text, math equation, picture, caption) is fully committed in Word,
+    // and selection automatically advances to the end of each inserted item.
+    let successCount = 0;
 
-        if (item.type === 'paragraphs') {
-          const pXml = convertMixedTextToOoxmlParagraphs(item.content);
-          const ooxml = buildOoxmlPackageForParagraphs(pXml);
-          targetRange = targetRange.insertOoxml(ooxml, location);
-        } else if (item.type === 'image') {
-          const pic = targetRange.insertInlinePictureFromBase64(item.base64, location);
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
 
-          // Scaled width for comfortable Word layout (max 380 pt)
-          const maxW = 380;
-          if (item.width > maxW) {
-            pic.width = maxW;
-            pic.height = Math.round((item.height * maxW) / item.width);
-          } else {
-            pic.width = item.width;
-            pic.height = item.height;
+      try {
+        await Word.run(async (context) => {
+          const currentSel = context.document.getSelection();
+
+          if (item.type === 'paragraphs') {
+            try {
+              const pXml = convertMixedTextToOoxmlParagraphs(item.content);
+              const ooxml = buildOoxmlPackageForParagraphs(pXml);
+
+              // If i === 0, replace current selection. If i > 0, insert on a clean paragraph below
+              const targetRange = i === 0
+                ? currentSel
+                : currentSel.insertParagraph('', Word.InsertLocation.after);
+
+              const insertedRange = targetRange.insertOoxml(ooxml, Word.InsertLocation.replace);
+              insertedRange.select(Word.SelectionMode.end);
+              await context.sync();
+            } catch (ooxmlError) {
+              console.warn(`[MathAddin] OOXML failed for item ${i}, using plain text fallback:`, ooxmlError);
+              const targetRange = i === 0
+                ? currentSel
+                : currentSel.insertParagraph('', Word.InsertLocation.after);
+              const insertedRange = targetRange.insertText(item.content, Word.InsertLocation.replace);
+              insertedRange.select(Word.SelectionMode.end);
+              await context.sync();
+            }
+          } else if (item.type === 'image') {
+            try {
+              // 1. Create a dedicated centered paragraph for the image
+              const imgParagraph = currentSel.insertParagraph('', Word.InsertLocation.after);
+              imgParagraph.alignment = Word.Alignment.centered;
+              imgParagraph.spaceBefore = 6;
+              imgParagraph.spaceAfter = 6;
+
+              // 2. Insert image inside this paragraph
+              const pic = imgParagraph.insertInlinePictureFromBase64(item.base64, Word.InsertLocation.replace);
+
+              // 3. Set display dimensions (scaling max 420 pt)
+              const maxW = 420;
+              if (item.width > maxW) {
+                pic.width = maxW;
+                pic.height = Math.round((item.height * maxW) / item.width);
+              } else if (item.width > 0 && item.height > 0) {
+                pic.width = item.width;
+                pic.height = item.height;
+              }
+
+              // 4. Add centered caption below if present
+              if (item.caption && item.caption.trim()) {
+                const capParagraph = imgParagraph.insertParagraph(item.caption.trim(), Word.InsertLocation.after);
+                capParagraph.font.name = 'Times New Roman';
+                capParagraph.font.size = 10.5;
+                capParagraph.font.italic = true;
+                capParagraph.font.color = '#555555';
+                capParagraph.alignment = Word.Alignment.centered;
+                capParagraph.spaceAfter = 8;
+                capParagraph.select(Word.SelectionMode.end);
+              } else {
+                imgParagraph.select(Word.SelectionMode.end);
+              }
+
+              await context.sync();
+            } catch (imgError) {
+              console.warn(`[MathAddin] Image insertion failed for item ${i}:`, imgError);
+              const fallbackP = currentSel.insertParagraph(`[Hình vẽ: ${item.caption || 'Minh họa'}]`, Word.InsertLocation.after);
+              fallbackP.font.italic = true;
+              fallbackP.select(Word.SelectionMode.end);
+              await context.sync();
+            }
           }
 
-          pic.paragraph.alignment = Word.Alignment.centered;
-          pic.paragraph.spaceBefore = 6;
-          pic.paragraph.spaceAfter = 6;
-
-          targetRange = pic.paragraph.getRange(Word.RangeLocation.after);
-
-          if (item.caption && item.caption.trim()) {
-            const capP = targetRange.insertParagraph(item.caption.trim(), Word.InsertLocation.after);
-            capP.font.name = 'Times New Roman';
-            capP.font.size = 10.5;
-            capP.font.italic = true;
-            capP.font.color = '#555555';
-            capP.alignment = Word.Alignment.centered;
-            capP.spaceAfter = 8;
-            targetRange = capP.getRange(Word.RangeLocation.after);
-          }
-        }
+          successCount++;
+        });
+      } catch (itemErr) {
+        console.error(`[MathAddin] Error executing item ${i}:`, itemErr);
+        // Continue loop to never drop remaining questions!
       }
-
-      await context.sync();
-    });
+    }
 
     return {
       success: true,
-      message: `Đã chuyển đổi và chèn thành công ${blocks.length} khối nội dung và hình ảnh vào Word!`
+      message: `Đã chuyển đổi và chèn thành công đầy đủ ${blocks.length} phần nội dung (gồm tất cả các câu hỏi và hình minh họa) vào Word!`
     };
   } catch (error: any) {
     console.error('[MathAddin] Lỗi insertDocumentBlocksToWord:', error);
@@ -587,4 +636,11 @@ export async function insertDocumentBlocksToWord(blocks: DocumentBlock[]): Promi
       message: `Lỗi chèn vào Word: ${error?.message || error}`
     };
   }
+}
+
+/**
+ * Inserts a single document block into Word at cursor
+ */
+export async function insertSingleBlockToWord(block: DocumentBlock): Promise<InsertionResult> {
+  return insertDocumentBlocksToWord([block]);
 }

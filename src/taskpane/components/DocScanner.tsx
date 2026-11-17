@@ -37,6 +37,7 @@ import {
   cropImageFromCanvas,
   callGeminiVisionOcr,
   insertDocumentBlocksToWord,
+  insertSingleBlockToWord,
   GEMINI_WEB_PROMPT,
   parseAiTextResponse
 } from '../services/aiScannerService';
@@ -446,13 +447,24 @@ export const DocScanner: React.FC = () => {
     if (blocks.length === 0) return;
     try {
       setIsInserting(true);
-      setInsertStatus('Đang chuyển đổi và chèn nội dung vào vị trí con trỏ trong Word...');
+      setInsertStatus('Đang chuyển đổi và chèn toàn bộ nội dung vào vị trí con trỏ trong Word...');
       const res = await insertDocumentBlocksToWord(blocks);
       setInsertStatus(res.message);
     } catch (err: any) {
       setInsertStatus('Lỗi chèn vào Word: ' + (err.message || err));
     } finally {
       setIsInserting(false);
+    }
+  };
+
+  // Insert a single block into Word at cursor
+  const handleInsertSingleBlock = async (block: DocumentBlock) => {
+    try {
+      setInsertStatus(`Đang chèn ${block.type === 'paragraph' ? 'đoạn văn bản & công thức' : 'hình ảnh'} vào Word...`);
+      const res = await insertSingleBlockToWord(block);
+      setInsertStatus(res.message);
+    } catch (err: any) {
+      setInsertStatus('Lỗi: ' + (err.message || err));
     }
   };
 
@@ -763,13 +775,25 @@ export const DocScanner: React.FC = () => {
                         <Badge size="small" appearance="outline" color="brand">
                           Đoạn {idx + 1}
                         </Badge>
-                        <Button
-                          size="small"
-                          appearance="subtle"
-                          icon={<Delete20Regular />}
-                          onClick={() => handleDeleteBlock(block.id)}
-                          style={{ color: '#d13438' }}
-                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Button
+                            size="small"
+                            appearance="subtle"
+                            icon={<Add20Regular />}
+                            onClick={() => handleInsertSingleBlock(block)}
+                            title="Chèn riêng đoạn này vào Word tại con trỏ"
+                            style={{ fontSize: '11px', color: '#0f6cbd' }}
+                          >
+                            Chèn đoạn này
+                          </Button>
+                          <Button
+                            size="small"
+                            appearance="subtle"
+                            icon={<Delete20Regular />}
+                            onClick={() => handleDeleteBlock(block.id)}
+                            style={{ color: '#d13438' }}
+                          />
+                        </div>
                       </div>
 
                       {/* Editable Textarea with LaTeX */}
@@ -807,13 +831,25 @@ export const DocScanner: React.FC = () => {
                             </Text>
                           )}
                         </div>
-                        <Button
-                          size="small"
-                          appearance="subtle"
-                          icon={<Delete20Regular />}
-                          onClick={() => handleDeleteBlock(block.id)}
-                          style={{ color: '#d13438' }}
-                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Button
+                            size="small"
+                            appearance="subtle"
+                            icon={<Add20Regular />}
+                            onClick={() => handleInsertSingleBlock(block)}
+                            title="Chèn riêng hình vẽ này vào Word tại con trỏ"
+                            style={{ fontSize: '11px', color: '#107c41' }}
+                          >
+                            Chèn hình này
+                          </Button>
+                          <Button
+                            size="small"
+                            appearance="subtle"
+                            icon={<Delete20Regular />}
+                            onClick={() => handleDeleteBlock(block.id)}
+                            style={{ color: '#d13438' }}
+                          />
+                        </div>
                       </div>
 
                       <div className={styles.imageBlockPreview}>
