@@ -31,7 +31,7 @@ import {
   CursorClick20Regular,
   Search20Regular
 } from '@fluentui/react-icons';
-import { insertMathEquation, latexToMathML, insertTextAtCursor } from '../services/wordService';
+import { insertMathEquation, latexToMathML, insertTextAtCursor, normalizeMathLimits } from '../services/wordService';
 
 // Configure MathLive fonts directory to use bundled offline fonts in /fonts
 if (typeof window !== 'undefined') {
@@ -275,21 +275,21 @@ const TEMPLATES_BY_CAT: Record<string, MathTemplate[]> = {
     { name: 'Độ dài cung cong', latex: 'L = \\int_{a}^{b} \\sqrt{1 + [f\'(x)]^2} \\, dx', preview: 'L = \\int \\sqrt{1+y\'^2}', tags: 'do dai cung' }
   ],
   limits: [
-    { name: 'Tổng xích-ma i=1..n', latex: '\\sum_{i=1}^{n} x_i', preview: '\\sum_{i=1}^{n} x_i', tags: 'tong xich ma sigma' },
-    { name: 'Tổng k=0..n', latex: '\\sum_{k=0}^{n} C_n^k a^{n-k} b^k', preview: '\\sum_{k=0}^{n} C_n^k', tags: 'nhi thuc newton tong' },
-    { name: 'Chuỗi vô hạn', latex: '\\sum_{n=1}^{\\infty} \\frac{1}{n^2}', preview: '\\sum_{n=1}^{\\infty}', tags: 'chuoi vo han' },
-    { name: 'Tích Pi', latex: '\\prod_{i=1}^{n} a_i', preview: '\\prod_{i=1}^{n} a_i', tags: 'tich pi product' },
-    { name: 'Giới hạn x -> x0', latex: '\\lim_{x \\to x_0} f(x)', preview: '\\lim_{x \\to x_0} f(x)', tags: 'gioi han limit x0' },
-    { name: 'Giới hạn x -> +vô cực', latex: '\\lim_{x \\to +\\infty} f(x)', preview: '\\lim_{x \\to +\\infty}', tags: 'gioi han vo cuc duong' },
-    { name: 'Giới hạn x -> -vô cực', latex: '\\lim_{x \\to -\\infty} f(x)', preview: '\\lim_{x \\to -\\infty}', tags: 'gioi han vo cuc am' },
-    { name: 'Giới hạn bên phải', latex: '\\lim_{x \\to x_0^+} f(x)', preview: '\\lim_{x \\to x_0^+}', tags: 'gioi han ben phai 1 ben' },
-    { name: 'Giới hạn bên trái', latex: '\\lim_{x \\to x_0^-} f(x)', preview: '\\lim_{x \\to x_0^-}', tags: 'gioi han ben trai 1 ben' },
-    { name: 'Giới hạn dãy số u_n', latex: '\\lim_{n \\to \\infty} u_n', preview: '\\lim u_n', tags: 'gioi han day so' },
-    { name: 'Giới hạn số e', latex: '\\lim_{x \\to 0} (1 + x)^{\\frac{1}{x}} = e', preview: '\\lim (1+x)^{1/x}', tags: 'gioi han e' },
-    { name: 'Hợp các tập hợp', latex: '\\bigcup_{i=1}^{n} A_i', preview: '\\bigcup_{i=1}^{n}', tags: 'hop vo han union' },
-    { name: 'Giao các tập hợp', latex: '\\bigcap_{i=1}^{n} A_i', preview: '\\bigcap_{i=1}^{n}', tags: 'giao vo han intersection' },
-    { name: 'Giá trị lớn nhất max', latex: '\\max_{x \\in [a; b]} f(x)', preview: '\\max f(x)', tags: 'gia tri lon nhat max' },
-    { name: 'Giá trị nhỏ nhất min', latex: '\\min_{x \\in [a; b]} f(x)', preview: '\\min f(x)', tags: 'gia tri nho nhat min' }
+    { name: 'Tổng xích-ma i=1..n', latex: '\\sum\\limits_{i=1}^{n} x_i', preview: '\\sum\\limits_{i=1}^{n} x_i', tags: 'tong xich ma sigma' },
+    { name: 'Tổng k=0..n', latex: '\\sum\\limits_{k=0}^{n} C_n^k a^{n-k} b^k', preview: '\\sum\\limits_{k=0}^{n} C_n^k', tags: 'nhi thuc newton tong' },
+    { name: 'Chuỗi vô hạn', latex: '\\sum\\limits_{n=1}^{\\infty} \\frac{1}{n^2}', preview: '\\sum\\limits_{n=1}^{\\infty}', tags: 'chuoi vo han' },
+    { name: 'Tích Pi', latex: '\\prod\\limits_{i=1}^{n} a_i', preview: '\\prod\\limits_{i=1}^{n} a_i', tags: 'tich pi product' },
+    { name: 'Giới hạn x -> x0', latex: '\\lim\\limits_{x \\to x_0} f(x)', preview: '\\lim\\limits_{x \\to x_0} f(x)', tags: 'gioi han limit x0' },
+    { name: 'Giới hạn x -> +vô cực', latex: '\\lim\\limits_{x \\to +\\infty} f(x)', preview: '\\lim\\limits_{x \\to +\\infty}', tags: 'gioi han vo cuc duong' },
+    { name: 'Giới hạn x -> -vô cực', latex: '\\lim\\limits_{x \\to -\\infty} f(x)', preview: '\\lim\\limits_{x \\to -\\infty}', tags: 'gioi han vo cuc am' },
+    { name: 'Giới hạn bên phải', latex: '\\lim\\limits_{x \\to x_0^+} f(x)', preview: '\\lim\\limits_{x \\to x_0^+}', tags: 'gioi han ben phai 1 ben' },
+    { name: 'Giới hạn bên trái', latex: '\\lim\\limits_{x \\to x_0^-} f(x)', preview: '\\lim\\limits_{x \\to x_0^-}', tags: 'gioi han ben trai 1 ben' },
+    { name: 'Giới hạn dãy số u_n', latex: '\\lim\\limits_{n \\to \\infty} u_n', preview: '\\lim\\limits u_n', tags: 'gioi han day so' },
+    { name: 'Giới hạn số e', latex: '\\lim\\limits_{x \\to 0} (1 + x)^{\\frac{1}{x}} = e', preview: '\\lim\\limits (1+x)^{1/x}', tags: 'gioi han e' },
+    { name: 'Hợp các tập hợp', latex: '\\bigcup\\limits_{i=1}^{n} A_i', preview: '\\bigcup\\limits_{i=1}^{n}', tags: 'hop vo han union' },
+    { name: 'Giao các tập hợp', latex: '\\bigcap\\limits_{i=1}^{n} A_i', preview: '\\bigcap\\limits_{i=1}^{n}', tags: 'giao vo han intersection' },
+    { name: 'Giá trị lớn nhất max', latex: '\\max\\limits_{x \\in [a; b]} f(x)', preview: '\\max\\limits f(x)', tags: 'gia tri lon nhat max' },
+    { name: 'Giá trị nhỏ nhất min', latex: '\\min\\limits_{x \\in [a; b]} f(x)', preview: '\\min\\limits f(x)', tags: 'gia tri nho nhat min' }
   ],
   trig: [
     { name: 'Sin x', latex: '\\sin x', preview: '\\sin x', tags: 'sin' },
@@ -734,7 +734,8 @@ export const FormulaEditor: React.FC = () => {
       return;
     }
     setStatus('Đang chèn công thức dạng MathType ($...$) vào Word...');
-    const mathTypeText = `$${latexInput.trim()}$`;
+    const normLatex = normalizeMathLimits(latexInput.trim());
+    const mathTypeText = `$${normLatex}$`;
     const res = await insertTextAtCursor(mathTypeText);
     setStatus(res.message);
   };

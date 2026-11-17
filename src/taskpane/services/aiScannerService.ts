@@ -222,6 +222,7 @@ QUY TẮC BẮT BUỘC:
 2. TẤT CẢ công thức toán học PHẢI được viết bằng mã LaTeX:
    - Trong dòng kẹp giữa $: ví dụ $y = \\frac{2x+1}{x-1}$, $\\vec{u} = (1; 2)$.
    - Dòng riêng kẹp giữa $$: ví dụ $$\\int_{0}^{1} f(x) dx$$.
+   - QUAN TRỌNG: Các toán tử giới hạn lim, max, min, sum, prod PHẢI LUÔN DÙNG \\limits (ví dụ $\\lim\\limits_{x \\to +\\infty}$, $\\max\\limits_{x \\in [a;b]}$, $\\sum\\limits_{i=1}^n$) để biến số nằm ngay dưới đáy toán tử theo chuẩn SGK Việt Nam.
 3. TÁCH HÌNH ẢNH MINH HỌA (Hình học không gian, hình phẳng, đồ thị hàm số):
    - Tạo khối "image", trả về tọa độ bounding box "box_2d": [ymin, xmin, ymax, xmax] từ 0 đến 1000.
 4. Trả về đúng định dạng JSON:
@@ -233,6 +234,19 @@ QUY TẮC BẮT BUỘC:
     { "type": "paragraph", "content": "Mệnh đề nào dưới đây đúng?\\nA. $a > 0$.\\nB. $a < 0$." }
   ]
 }`;
+
+/**
+ * Normalizes mathematical operators like lim, max, min, inf, sup, sum, prod, bigcup, bigcap
+ * so that limits/subscripts are placed directly below/above the operator (\limits),
+ * matching standard Vietnamese educational typography (e.g. \lim\limits_{x \to 0}).
+ */
+export function normalizeMathLimits(code: string): string {
+  if (!code) return '';
+  return code.replace(
+    /(?:\\|(?<=[^a-zA-Z]|^))(lim|max|min|inf|sup|limsup|liminf|sum|prod|bigcup|bigcap)(?!\s*\\limits)\s*([_\^])/g,
+    (_, op, sub) => '\\' + op + '\\limits' + sub
+  );
+}
 
 /**
  * Parses raw AI text response (from API or pasted from Gemini Web) into structured DocumentBlocks
@@ -251,7 +265,7 @@ export function parseAiTextResponse(rawText: string): ScanResult {
           blocks: parsed.blocks.map((b: any, idx: number) => ({
             id: `block_${Date.now()}_${idx}`,
             type: b.type === 'image' ? 'image' : 'paragraph',
-            content: b.content || '',
+            content: normalizeMathLimits(b.content || ''),
             caption: b.caption || '',
             box_2d: Array.isArray(b.box_2d) && b.box_2d.length === 4 ? b.box_2d : undefined
           }))
@@ -267,7 +281,7 @@ export function parseAiTextResponse(rawText: string): ScanResult {
   const blocks: DocumentBlock[] = lines.map((line, idx) => ({
     id: `block_${Date.now()}_${idx}`,
     type: 'paragraph',
-    content: line.trim()
+    content: normalizeMathLimits(line.trim())
   }));
 
   return {
@@ -493,7 +507,8 @@ export function convertMixedTextToOoxmlParagraphs(
   text: string,
   formulaMode: FormulaInsertMode = 'equation'
 ): string {
-  const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+  const normalizedText = normalizeMathLimits(text);
+  const lines = normalizedText.split(/\r?\n/).filter(line => line.trim().length > 0);
   let pXmlList = '';
 
   for (const line of lines) {

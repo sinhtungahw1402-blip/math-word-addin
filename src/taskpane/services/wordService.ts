@@ -62,10 +62,24 @@ export async function insertHelloMath(): Promise<InsertionResult> {
 }
 
 /**
+ * Normalizes mathematical operators like lim, max, min, inf, sup, sum, prod, bigcup, bigcap
+ * so that limits/subscripts are placed directly below/above the operator (\limits),
+ * matching standard Vietnamese educational typography (e.g. \lim\limits_{x \to 0}).
+ */
+export function normalizeMathLimits(code: string): string {
+  if (!code) return '';
+  return code.replace(
+    /(?:\\|(?<=[^a-zA-Z]|^))(lim|max|min|inf|sup|limsup|liminf|sum|prod|bigcup|bigcap)(?!\s*\\limits)\s*([_\^])/g,
+    (_, op, sub) => '\\' + op + '\\limits' + sub
+  );
+}
+
+/**
  * Converts a LaTeX formula into clean MathML
  */
 export function latexToMathML(latex: string): string {
-  const rawMathML = katex.renderToString(latex, {
+  const normalized = normalizeMathLimits(latex);
+  const rawMathML = katex.renderToString(normalized, {
     output: 'mathml',
     throwOnError: false
   });
