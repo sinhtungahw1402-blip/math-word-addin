@@ -153,6 +153,67 @@ export function cropImageFromCanvas(
 /**
  * Calls Gemini Vision API to parse document text, LaTeX formulas, and detect diagrams
  */
+export const GEMINI_WEB_PROMPT = `Bạn là chuyên gia số hóa đề thi Toán học Việt Nam. Hãy đọc hình ảnh này và chuyển đổi thành danh sách các khối (blocks) theo đúng thứ tự từ trên xuống dưới.
+
+QUY TẮC BẮT BUỘC:
+1. Nhận diện CHÍNH XÁC 100% văn bản tiếng Việt (câu hỏi trắc nghiệm, các lựa chọn A., B., C., D., lời giải, bảng).
+2. TẤT CẢ công thức toán học PHẢI được viết bằng mã LaTeX:
+   - Trong dòng kẹp giữa $: ví dụ $y = \\frac{2x+1}{x-1}$, $\\vec{u} = (1; 2)$.
+   - Dòng riêng kẹp giữa $$: ví dụ $$\\int_{0}^{1} f(x) dx$$.
+3. TÁCH HÌNH ẢNH MINH HỌA (Hình học không gian, hình phẳng, đồ thị hàm số):
+   - Tạo khối "image", trả về tọa độ bounding box "box_2d": [ymin, xmin, ymax, xmax] từ 0 đến 1000.
+4. Trả về đúng định dạng JSON:
+{
+  "title": "Tiêu đề đề thi",
+  "blocks": [
+    { "type": "paragraph", "content": "Câu 1. Cho hàm số $y = f(x)$ có đồ thị như hình vẽ:" },
+    { "type": "image", "caption": "Hình minh họa", "box_2d": [ymin, xmin, ymax, xmax] },
+    { "type": "paragraph", "content": "Mệnh đề nào dưới đây đúng?\\nA. $a > 0$.\\nB. $a < 0$." }
+  ]
+}`;
+
+/**
+ * Parses raw AI text response (from API or pasted from Gemini Web) into structured DocumentBlocks
+ */
+export function parseAiTextResponse(rawText: string): ScanResult {
+  const clean = rawText.trim();
+
+  // 1. Try finding and parsing JSON object
+  const jsonMatch = clean.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed.blocks)) {
+        return {
+          title: parsed.title || 'Tài liệu đã nhận diện',
+          blocks: parsed.blocks.map((b: any, idx: number) => ({
+            id: `block_${Date.now()}_${idx}`,
+            type: b.type === 'image' ? 'image' : 'paragraph',
+            content: b.content || '',
+            caption: b.caption || '',
+            box_2d: Array.isArray(b.box_2d) && b.box_2d.length === 4 ? b.box_2d : undefined
+          }))
+        };
+      }
+    } catch (e) {
+      console.warn('[MathAddin] JSON parse failed, falling back to line parser:', e);
+    }
+  }
+
+  // 2. Fallback: Parse markdown or plain text line-by-line
+  const lines = clean.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const blocks: DocumentBlock[] = lines.map((line, idx) => ({
+    id: `block_${Date.now()}_${idx}`,
+    type: 'paragraph',
+    content: line.trim()
+  }));
+
+  return {
+    title: 'Tài liệu đã nhận diện từ Gemini Web',
+    blocks
+  };
+}
+
 function extractTextFromApiResponse(result: any): string {
   if (result.output_text) return result.output_text;
   if (Array.isArray(result.steps)) {
@@ -176,12 +237,12 @@ function extractTextFromApiResponse(result: any): string {
 
 /**
  * Calls Gemini Vision API to parse document text, LaTeX formulas, and detect diagrams
- * Employs 2026 Interactions API with automatic dynamic model discovery fallback
+ * Directly targets Google's standard gemini-3.8-flash model with zero-burst rate limiting
  */
 export async function callGeminiVisionOcr(
   imageBase64: string,
   apiKey: string,
-  model = 'gemini-2.5-flash'
+  model = 'gemini-3.8-flash'
 ): Promise<ScanResult> {
   const cleanKey = apiKey.trim();
   if (!cleanKey) {
@@ -189,77 +250,96 @@ export async function callGeminiVisionOcr(
   }
 
   const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+  const chosenModel = model || 'gemini-3.8-flash';
 
-  const promptText = `
-Bạn là chuyên gia số hóa tài liệu đề thi và sách giáo khoa Toán học Việt Nam.
-Nhiệm vụ của bạn là chuyển đổi hình ảnh trang tài liệu/đề thi thành danh sách các khối nội dung (blocks) theo đúng thứ tự từ trên xuống dưới.
-
-QUY TẮC BẮT BUỘC:
-1. Nhận diện CHÍNH XÁC 100% văn bản tiếng Việt (kể cả câu hỏi trắc nghiệm, các lựa chọn A., B., C., D., lời giải, bảng).
-2. TẤT CẢ công thức toán học PHẢI được viết bằng mã LaTeX:
-   - Công thức nằm trong dòng kẹp giữa $: ví dụ $y = \\frac{2x+1}{x-1}$, $\\Delta = b^2 - 4ac$, $\\vec{u} = (1; 2)$.
-   - Công thức nằm trên dòng riêng kẹp giữa $$: ví dụ $$\\int_{0}^{1} f(x) dx$$.
-3. QUAN TRỌNG NHẤT - TÁCH HÌNH ẢNH MINH HỌA (Hình học, Đồ thị, Bảng biến thiên):
-   - Khi gặp hình vẽ hình học (tam giác, tứ giác, hình chóp, khối lăng trụ, nón, trụ, cầu...), đồ thị hàm số, bảng biến thiên vẽ tay/chụp, sơ đồ, hoặc hình ảnh minh họa:
-     Tạo một khối type "image", KHÔNG cố gắng gõ lại hình thành chữ.
-     Trả về tọa độ hộp bao (bounding box) "box_2d": [ymin, xmin, ymax, xmax] với tọa độ chuẩn hóa từ 0 đến 1000 (0 là mép trên/trái, 1000 là mép dưới/phải).
-   - Đặt khối "image" này vào đúng vị trí tuần tự xen kẽ giữa các đoạn văn bản (ví dụ ngay sau câu hỏi hoặc trước các đáp án A B C D).
-4. ĐỊNH DẠNG TRẢ VỀ:
-   BẮT BUỘC chỉ trả về JSON hợp lệ (không kèm markdown \`\`\`json ở ngoài), theo mẫu sau:
-{
-  "title": "Tiêu đề tài liệu nếu có",
-  "blocks": [
-    {
-      "type": "paragraph",
-      "content": "Câu 1. Cho hàm số $y = \\frac{ax+b}{cx+d}$ có đồ thị như hình vẽ bên dưới:"
-    },
-    {
-      "type": "image",
-      "caption": "Đồ thị hàm số Câu 1",
-      "box_2d": [215, 520, 580, 940]
-    },
-    {
-      "type": "paragraph",
-      "content": "Mệnh đề nào dưới đây là đúng?\\nA. $ad - bc > 0$.\\nB. $a > 0, b < 0$.\\nC. $c > 0, d < 0$.\\nD. $a < 0, d > 0$."
+  const payload = {
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { text: GEMINI_WEB_PROMPT },
+          {
+            inline_data: {
+              mime_type: 'image/png',
+              data: cleanBase64
+            }
+          }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.1,
+      response_mime_type: 'application/json'
     }
-  ]
-}
-`;
-
-  const parseJsonResult = (rawText: string): ScanResult => {
-    let parsed: any;
-    try {
-      let cleanJson = rawText.trim();
-      const match = cleanJson.match(/\{[\s\S]*\}/);
-      if (match) cleanJson = match[0];
-      parsed = JSON.parse(cleanJson);
-    } catch (e) {
-      console.error('[MathAddin] Lỗi parse JSON từ Gemini:', rawText);
-      throw new Error('Định dạng phản hồi từ AI không hợp lệ. Vui lòng bấm Quét lại.');
-    }
-
-    const rawBlocks = Array.isArray(parsed.blocks) ? parsed.blocks : [];
-    const blocks: DocumentBlock[] = rawBlocks.map((b: any, idx: number) => ({
-      id: `block_${Date.now()}_${idx}`,
-      type: b.type === 'image' ? 'image' : 'paragraph',
-      content: b.content || '',
-      caption: b.caption || '',
-      box_2d: b.box_2d && Array.isArray(b.box_2d) && b.box_2d.length === 4 ? b.box_2d : undefined
-    }));
-
-    return {
-      title: parsed.title || 'Tài liệu đã quét',
-      blocks
-    };
   };
+
+  // 1. Try standard generateContent with selected model (gemini-3.8-flash)
+  const candidateModels = [chosenModel, 'gemini-3.8-flash', 'gemini-3.5-flash-lite'].filter(
+    (m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx
+  );
 
   let lastError: any = null;
 
-  // STRATEGY 1: 2026 Interactions API (Google's standard recommended API for gemini-2.5-flash)
+  for (const mod of candidateModels) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${cleanKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': cleanKey
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        const errMsg = errData.error?.message || response.statusText;
+
+        // Rate limit (429)
+        if (response.status === 429) {
+          throw new Error('Đã đạt giới hạn số lượt quét miễn phí (15 lần/phút). Bạn vui lòng đợi khoảng 30 giây rồi bấm thử lại, hoặc dùng chế độ "Dùng Gemini Web" ở bên dưới nhé!');
+        }
+
+        // Invalid key
+        if (response.status === 400 && errMsg.toLowerCase().includes('api_key_invalid')) {
+          throw new Error('Khóa API không hợp lệ. Vui lòng kiểm tra lại khóa API Google AI Studio của bạn.');
+        }
+
+        // If 404, try next candidate
+        if (response.status === 404) {
+          lastError = new Error(`Lỗi Gemini API (${response.status}): ${errMsg}`);
+          continue;
+        }
+
+        throw new Error(`Lỗi Gemini API (${response.status}): ${errMsg}`);
+      }
+
+      const result = await response.json();
+      const rawText = extractTextFromApiResponse(result);
+      if (!rawText) {
+        throw new Error('Gemini không trả về nội dung nhận diện.');
+      }
+
+      return parseAiTextResponse(rawText);
+    } catch (err: any) {
+      if (
+        err.message &&
+        (err.message.includes('không hợp lệ') ||
+          err.message.includes('giới hạn') ||
+          err.message.includes('429'))
+      ) {
+        throw err;
+      }
+      lastError = err;
+    }
+  }
+
+  // 2. Secondary fallback: 2026 Interactions API
   try {
     const interactionsUrl = `https://generativelanguage.googleapis.com/v1beta/interactions`;
     const interactionsPayload = {
-      model: model || 'gemini-2.5-flash',
+      model: chosenModel,
       generation_config: {
         temperature: 0.1,
         response_mime_type: 'application/json'
@@ -267,7 +347,7 @@ QUY TẮC BẮT BUỘC:
       input: [
         {
           type: 'text',
-          text: promptText
+          text: GEMINI_WEB_PROMPT
         },
         {
           type: 'image',
@@ -290,154 +370,14 @@ QUY TẮC BẮT BUỘC:
       const data = await resp.json();
       const text = extractTextFromApiResponse(data);
       if (text) {
-        return parseJsonResult(text);
+        return parseAiTextResponse(text);
       }
-    } else {
-      const errData = await resp.json().catch(() => ({}));
-      console.warn('[MathAddin] Interactions API returned:', resp.status, errData);
-      lastError = new Error(`Lỗi Gemini API (${resp.status}): ${errData.error?.message || resp.statusText}`);
     }
-  } catch (err: any) {
-    console.warn('[MathAddin] Interactions API network error:', err);
-    lastError = err;
+  } catch (e) {
+    console.warn('[MathAddin] Interactions fallback error:', e);
   }
 
-  // STRATEGY 2: Dynamic ListModels query to find active models on this user's key
-  let discoveredModels: string[] = [];
-  for (const apiVer of ['v1beta', 'v1']) {
-    try {
-      const lmResp = await fetch(`https://generativelanguage.googleapis.com/${apiVer}/models?key=${cleanKey}`, {
-        headers: { 'x-goog-api-key': cleanKey }
-      });
-      if (lmResp.ok) {
-        const lmData = await lmResp.json();
-        if (Array.isArray(lmData.models)) {
-          const valid = lmData.models
-            .filter((m: any) =>
-              Array.isArray(m.supportedGenerationMethods) &&
-              m.supportedGenerationMethods.includes('generateContent')
-            )
-            .map((m: any) => ({
-              apiVer,
-              name: m.name.replace(/^models\//, '')
-            }));
-
-          if (valid.length > 0) {
-            // Sort to prioritize gemini-2.5-flash and 1.5-flash
-            valid.sort((a: any, b: any) => {
-              const aScore =
-                (a.name.includes('2.5-flash') ? 20 : 0) +
-                (a.name.includes('1.5-flash') ? 10 : 0) +
-                (a.name.includes('flash') ? 5 : 0);
-              const bScore =
-                (b.name.includes('2.5-flash') ? 20 : 0) +
-                (b.name.includes('1.5-flash') ? 10 : 0) +
-                (b.name.includes('flash') ? 5 : 0);
-              return bScore - aScore;
-            });
-            for (const v of valid) {
-              discoveredModels.push(`${v.apiVer}::${v.name}`);
-            }
-            break;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn(`[MathAddin] ListModels check error (${apiVer}):`, e);
-    }
-  }
-
-  if (discoveredModels.length === 0) {
-    discoveredModels = [
-      'v1beta::gemini-2.5-flash',
-      'v1::gemini-1.5-flash',
-      'v1beta::gemini-1.5-flash',
-      'v1::gemini-1.5-pro',
-      'v1beta::gemini-2.5-flash-lite'
-    ];
-  }
-
-  // STRATEGY 3: Legacy generateContent with discovered models
-  const legacyPayload = {
-    contents: [
-      {
-        parts: [
-          { text: promptText },
-          {
-            inline_data: {
-              mime_type: 'image/png',
-              data: cleanBase64
-            }
-          }
-        ]
-      }
-    ],
-    generationConfig: {
-      temperature: 0.1,
-      response_mime_type: 'application/json'
-    }
-  };
-
-  for (const item of discoveredModels) {
-    const [apiVer, modName] = item.split('::');
-    try {
-      const url = `https://generativelanguage.googleapis.com/${apiVer}/models/${modName}:generateContent?key=${cleanKey}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': cleanKey
-        },
-        body: JSON.stringify(legacyPayload)
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        const errMsg = errData.error?.message || response.statusText;
-
-        if (
-          response.status === 404 ||
-          errMsg.toLowerCase().includes('not found') ||
-          errMsg.toLowerCase().includes('no longer available')
-        ) {
-          console.warn(`[MathAddin] Model ${item} 404, thử tiếp...`);
-          lastError = new Error(`Lỗi Gemini API (${response.status}): ${errMsg}`);
-          continue;
-        }
-
-        if (response.status === 429) {
-          throw new Error('Đã đạt giới hạn số lượt quét miễn phí (15 lần/phút). Bạn vui lòng đợi 30 giây rồi bấm thử lại!');
-        }
-
-        if (response.status === 400 && errMsg.toLowerCase().includes('api_key_invalid')) {
-          throw new Error('Khóa API không hợp lệ. Vui lòng kiểm tra lại khóa API Google AI Studio của bạn.');
-        }
-
-        lastError = new Error(`Lỗi Gemini API (${response.status}): ${errMsg}`);
-        continue;
-      }
-
-      const result = await response.json();
-      const rawText = extractTextFromApiResponse(result);
-      if (!rawText) {
-        throw new Error('Gemini không trả về nội dung nhận diện.');
-      }
-
-      return parseJsonResult(rawText);
-    } catch (err: any) {
-      if (
-        err.message &&
-        (err.message.includes('không hợp lệ') ||
-          err.message.includes('giới hạn') ||
-          err.message.includes('429'))
-      ) {
-        throw err;
-      }
-      lastError = err;
-    }
-  }
-
-  throw lastError || new Error('Không thể kết nối đến mô hình Gemini AI. Vui lòng thử lại sau.');
+  throw lastError || new Error('Không thể kết nối đến mô hình Gemini AI. Vui lòng kiểm tra lại kết nối mạng hoặc thử lại sau 30 giây.');
 }
 
 /**

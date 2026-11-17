@@ -36,7 +36,9 @@ import {
   renderPdfPageToCanvas,
   cropImageFromCanvas,
   callGeminiVisionOcr,
-  insertDocumentBlocksToWord
+  insertDocumentBlocksToWord,
+  GEMINI_WEB_PROMPT,
+  parseAiTextResponse
 } from '../services/aiScannerService';
 
 const useStyles = makeStyles({
@@ -155,11 +157,55 @@ export const DocScanner: React.FC = () => {
   });
   const [model, setModel] = useState<string>(() => {
     const saved = localStorage.getItem('gemini_model');
-    if (saved && saved !== 'gemini-2.0-flash') return saved;
-    return 'gemini-2.5-flash';
+    if (saved && saved !== 'gemini-2.0-flash' && saved !== 'gemini-2.5-flash') return saved;
+    return 'gemini-3.8-flash';
   });
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [apiKeySaved, setApiKeySaved] = useState<boolean>(false);
+
+  // Gemini Web Bridge State
+  const [webResponseText, setWebResponseText] = useState<string>('');
+  const [copiedPrompt, setCopiedPrompt] = useState<boolean>(false);
+
+  const handleCopyWebPrompt = () => {
+    navigator.clipboard.writeText(GEMINI_WEB_PROMPT);
+    setCopiedPrompt(true);
+    setTimeout(() => setCopiedPrompt(false), 3000);
+    window.open('https://gemini.google.com/app', '_blank');
+  };
+
+  const handleParseWebResponse = () => {
+    if (!webResponseText.trim()) return;
+    setScanStatus('Đang xử lý kết quả và tự động trích xuất hình ảnh...');
+    try {
+      const res: ScanResult = parseAiTextResponse(webResponseText);
+      setDocTitle(res.title || 'Tài liệu từ Gemini Web');
+
+      const processedBlocks: DocumentBlock[] = [];
+      for (const block of res.blocks) {
+        if (block.type === 'image' && block.box_2d && activeCanvas) {
+          try {
+            const cropped = cropImageFromCanvas(activeCanvas, block.box_2d);
+            processedBlocks.push({
+              ...block,
+              imageBase64: cropped.base64,
+              imageWidth: cropped.width,
+              imageHeight: cropped.height
+            });
+          } catch {
+            processedBlocks.push(block);
+          }
+        } else {
+          processedBlocks.push(block);
+        }
+      }
+
+      setBlocks(processedBlocks);
+      setScanStatus(`✅ Đã nhận diện thành công ${processedBlocks.length} khối nội dung từ Gemini Web!`);
+    } catch (err: any) {
+      setScanStatus(`Lỗi xử lý: ${err.message || err}`);
+    }
+  };
 
   // Input File State
   const [fileType, setFileType] = useState<'image' | 'pdf' | null>(null);
@@ -447,9 +493,9 @@ export const DocScanner: React.FC = () => {
                   localStorage.setItem('gemini_model', d.value);
                 }}
               >
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Mới nhất, cực nhanh &amp; chuẩn xác - Khuyên dùng)</option>
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Bản ổn định lâu dài - Miễn phí)</option>
-                <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (Tốc độ cao - Miễn phí)</option>
+                <option value="gemini-3.8-flash">Gemini 3.8 Flash (Mới nhất, siêu nhanh &amp; chính xác - Khuyên dùng)</option>
+                <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite (Bản tốc độ cao - Miễn phí)</option>
+                <option value="gemini-4-hydrogen">Gemini 4 (Mô hình Gemini thế hệ 4 thông minh)</option>
               </Select>
             </Field>
           </div>
@@ -562,8 +608,56 @@ export const DocScanner: React.FC = () => {
               onClick={handleStartScan}
               style={{ marginTop: '4px' }}
             >
-              {isScanning ? 'Đang phân tích tài liệu...' : '🚀 Bắt đầu Quét & Tách hình ảnh'}
+              {isScanning ? 'Đang phân tích tài liệu...' : '🚀 Bắt đầu Quét & Tách hình ảnh (Tự động API)'}
             </Button>
+
+            {/* Direct Gemini Web Bridge (Uses user's own Gemini Pro web account) */}
+            <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #c7e0f4', backgroundColor: '#fafcff', padding: '8px', borderRadius: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <Text weight="semibold" size={200} style={{ color: '#0f6cbd' }}>
+                  🌐 Hoặc dùng trực tiếp tài khoản Gemini Pro Web:
+                </Text>
+                <Badge size="small" appearance="tint" color="informative">Không giới hạn</Badge>
+              </div>
+              <Text size={100} style={{ color: '#666', display: 'block', marginBottom: '6px' }}>
+                Nếu API tạm thời bận, bạn có thể gửi ảnh trực tiếp vào tài khoản Gemini Pro đang mở trên trình duyệt:
+              </Text>
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                <Button
+                  size="small"
+                  appearance="outline"
+                  icon={<Copy20Regular />}
+                  onClick={handleCopyWebPrompt}
+                  style={{ fontSize: '11px' }}
+                >
+                  {copiedPrompt ? '✅ Đã chép câu lệnh!' : '1. Chép câu lệnh & Mở Gemini Web'}
+                </Button>
+                <Button
+                  size="small"
+                  appearance="subtle"
+                  style={{ fontSize: '11px', color: '#0f6cbd' }}
+                  onClick={() => window.open('https://gemini.google.com/app', '_blank')}
+                >
+                  gemini.google.com ↗
+                </Button>
+              </div>
+              <Textarea
+                placeholder="2. Dán toàn bộ câu trả lời từ Gemini Web vào đây..."
+                value={webResponseText}
+                onChange={(_, d) => setWebResponseText(d.value)}
+                rows={2}
+                style={{ width: '100%', fontFamily: 'Consolas, monospace', fontSize: '11px', marginBottom: '4px' }}
+              />
+              <Button
+                appearance="primary"
+                size="small"
+                style={{ width: '100%', backgroundColor: '#107c41' }}
+                disabled={!webResponseText.trim()}
+                onClick={handleParseWebResponse}
+              >
+                ⚡ 2. Trích xuất kết quả & Cắt ảnh đưa vào Word
+              </Button>
+            </div>
           </div>
         )}
 
