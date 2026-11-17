@@ -257,31 +257,101 @@ export function parseAiTextResponse(rawText: string): ScanResult {
   // 1. Try finding and parsing JSON object
   const jsonMatch = clean.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
+    const jsonStr = jsonMatch[0];
+
+    // Attempt 1a: Direct parse
     try {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (Array.isArray(parsed.blocks)) {
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed.blocks) && parsed.blocks.length > 0) {
         return {
           title: parsed.title || 'Tài liệu đã nhận diện',
           blocks: parsed.blocks.map((b: any, idx: number) => ({
             id: `block_${Date.now()}_${idx}`,
             type: b.type === 'image' ? 'image' : 'paragraph',
-            content: normalizeMathLimits(b.content || ''),
+            content: normalizeMathLimits((b.content || '').replace(/\\n/g, '\n')),
             caption: b.caption || '',
             box_2d: Array.isArray(b.box_2d) && b.box_2d.length === 4 ? b.box_2d : undefined
           }))
         };
       }
-    } catch (e) {
-      console.warn('[MathAddin] JSON parse failed, falling back to line parser:', e);
-    }
+    } catch (_) {}
+
+    // Attempt 1b: Fix unescaped backslashes commonly produced by LLMs for LaTeX formulas
+    try {
+      const fixedJson = jsonStr.replace(/\\(?!["\\/])/g, '\\\\');
+      const parsed = JSON.parse(fixedJson);
+      if (Array.isArray(parsed.blocks) && parsed.blocks.length > 0) {
+        return {
+          title: parsed.title || 'Tài liệu đã nhận diện',
+          blocks: parsed.blocks.map((b: any, idx: number) => ({
+            id: `block_${Date.now()}_${idx}`,
+            type: b.type === 'image' ? 'image' : 'paragraph',
+            content: normalizeMathLimits((b.content || '').replace(/\\n/g, '\n')),
+            caption: b.caption || '',
+            box_2d: Array.isArray(b.box_2d) && b.box_2d.length === 4 ? b.box_2d : undefined
+          }))
+        };
+      }
+    } catch (_) {}
+
+    // Attempt 1c: Regex block extractor for malformed/truncated JSON
+    try {
+      const blocks: DocumentBlock[] = [];
+      const blockRegex = /\{\s*"type"\s*:\s*"(paragraph|image)"[\s\S]*?\}(?=\s*,\s*\{|\s*\])/g;
+      let m: RegExpExecArray | null;
+      while ((m = blockRegex.exec(jsonStr)) !== null) {
+        const itemStr = m[0];
+        const typeMatch = itemStr.match(/"type"\s*:\s*"(paragraph|image)"/);
+        const type: 'paragraph' | 'image' = typeMatch && typeMatch[1] === 'image' ? 'image' : 'paragraph';
+
+        const contentMatch = itemStr.match(/"content"\s*:\s*"([\s\S]*?)"(?=\s*,\s*"|\s*\})/);
+        let content = contentMatch ? contentMatch[1] : '';
+        content = content.replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\n/g, '\n');
+
+        const captionMatch = itemStr.match(/"caption"\s*:\s*"([\s\S]*?)"/);
+        const caption = captionMatch ? captionMatch[1] : '';
+
+        const boxMatch = itemStr.match(/"box_2d"\s*:\s*\[([\d\s,]+)\]/);
+        let box_2d: [number, number, number, number] | undefined = undefined;
+        if (boxMatch) {
+          const coords = boxMatch[1].split(',').map((s) => parseInt(s.trim(), 10));
+          if (coords.length === 4 && coords.every((n) => !isNaN(n))) {
+            box_2d = coords as [number, number, number, number];
+          }
+        }
+
+        blocks.push({
+          id: `block_${Date.now()}_${blocks.length}`,
+          type,
+          content: normalizeMathLimits(content),
+          caption,
+          box_2d
+        });
+      }
+
+      if (blocks.length > 0) {
+        const titleMatch = jsonStr.match(/"title"\s*:\s*"([^"]+)"/);
+        return {
+          title: titleMatch ? titleMatch[1] : 'Tài liệu đã nhận diện',
+          blocks
+        };
+      }
+    } catch (_) {}
   }
 
-  // 2. Fallback: Parse markdown or plain text line-by-line
+  // 2. Fallback: Parse markdown or plain text line-by-line (ignore raw JSON wrappers)
+  if (clean.includes('"blocks"') || (clean.startsWith('{') && clean.endsWith('}'))) {
+    return {
+      title: 'Tài liệu đã nhận diện',
+      blocks: []
+    };
+  }
+
   const lines = clean.split(/\r?\n/).filter((l) => l.trim().length > 0);
   const blocks: DocumentBlock[] = lines.map((line, idx) => ({
     id: `block_${Date.now()}_${idx}`,
     type: 'paragraph',
-    content: normalizeMathLimits(line.trim())
+    content: normalizeMathLimits(line.trim().replace(/\\n/g, '\n'))
   }));
 
   return {
