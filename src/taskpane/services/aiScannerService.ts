@@ -1,7 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import katex from 'katex';
 import { mml2omml } from 'mathml2omml';
-import { isWordHost, InsertionResult } from './wordService';
+import { isWordHost, InsertionResult, normalizeMathCode, enhanceOmmlDelimiters } from './wordService';
 
 // Configure PDF.js worker
 if (typeof window !== 'undefined') {
@@ -695,8 +695,12 @@ export function repairAndNormalizeText(text: string): string {
     return mathMatch.replace(/\.{3,}/g, '\\dots ');
   });
 
-  // 4. Normalize limits (\lim\limits)
-  return normalizeMathLimits(step3);
+  // 4. Normalize limits (\lim\limits) and condition words (khi, với, nếu) inside formulas
+  const step4 = step3.replace(/(\$\$[\s\S]+?\$\$|\$[^\$]+?\$)/g, (mathMatch) => {
+    return normalizeMathCode(mathMatch);
+  });
+
+  return step4;
 }
 
 /**
@@ -1074,13 +1078,15 @@ export function convertMixedTextToOoxmlParagraphs(
         runsXml += `<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t xml:space="preserve">${escaped}</w:t></w:r>`;
       } else {
         try {
-          const rawMml = katex.renderToString(token.content, { output: 'mathml', throwOnError: false });
+          const normalizedContent = normalizeMathCode(token.content);
+          const rawMml = katex.renderToString(normalizedContent, { output: 'mathml', throwOnError: false });
           const clean = rawMml
             .replace(/<annotation[^>]*>[\s\S]*?<\/annotation>/gi, '')
             .replace(/<annotation-xml[^>]*>[\s\S]*?<\/annotation-xml>/gi, '')
             .match(/<math[\s\S]*?<\/math>/i);
           if (clean) {
             let omml = mml2omml(clean[0]);
+            omml = enhanceOmmlDelimiters(omml);
             omml = sanitizeOmml(omml);
             if (token.isDisplay) {
               runsXml += `<m:oMathPara>${omml}</m:oMathPara>`;

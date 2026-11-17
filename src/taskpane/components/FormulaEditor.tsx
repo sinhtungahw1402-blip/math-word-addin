@@ -31,7 +31,7 @@ import {
   CursorClick20Regular,
   Search20Regular
 } from '@fluentui/react-icons';
-import { insertMathEquation, latexToMathML, insertTextAtCursor, normalizeMathLimits } from '../services/wordService';
+import { insertMathEquation, latexToMathML, insertTextAtCursor, normalizeMathCode } from '../services/wordService';
 
 // Configure MathLive fonts directory to use bundled offline fonts in /fonts
 if (typeof window !== 'undefined') {
@@ -247,10 +247,16 @@ const TEMPLATES_BY_CAT: Record<string, MathTemplate[]> = {
       tags: 'dau hoac 3 nghiem'
     },
     {
-      name: 'Hàm từng khúc (Piecewise)',
+      name: 'Hàm từng khúc 2 nhánh',
       latex: 'f(x) = \\begin{cases} x^2 & \\text{khi } x \\ge 0 \\\\ -x & \\text{khi } x < 0 \\end{cases}',
       preview: 'f(x)=\\begin{cases} x^2 \\\\ -x \\end{cases}',
-      tags: 'ham tung khuc piecewise'
+      tags: 'ham tung khuc 2 nhanh piecewise'
+    },
+    {
+      name: 'Hàm từng khúc 3 nhánh (chuẩn)',
+      latex: 'f(x) = \\begin{cases} x^2 + x + 1 & \\text{khi } x \\le -1 \\\\ x + 2 & \\text{khi } -1 < x < 1 \\\\ 2x + 3 & \\text{khi } x \\ge 1 \\end{cases}',
+      preview: 'f(x)=\\begin{cases} x^2+1 \\\\ x+2 \\\\ 2x+3 \\end{cases}',
+      tags: 'ham tung khuc 3 nhanh piecewise'
     },
     { name: 'Góc giữa 2 vectơ', latex: '\\left( \\vec{u}, \\vec{v} \\right)', preview: '(\\vec{u}, \\vec{v})', tags: 'goc giua 2 vecto' },
     { name: 'Cặp tọa độ (x; y)', latex: '\\left( x; y \\right)', preview: '(x;y)', tags: 'toa do oxy' },
@@ -717,14 +723,16 @@ export const FormulaEditor: React.FC = () => {
   const handleInsertDisplay = async () => {
     if (!latexInput.trim()) return;
     setStatus('Đang tạo công thức chuẩn Word Equation (OMML)...');
-    const res = await insertMathEquation(latexInput, false);
+    const norm = normalizeMathCode(latexInput.trim());
+    const res = await insertMathEquation(norm, false);
     setStatus(res.message);
   };
 
   const handleInsertInline = async () => {
     if (!latexInput.trim()) return;
     setStatus('Đang chèn công thức trong dòng...');
-    const res = await insertMathEquation(latexInput, true);
+    const norm = normalizeMathCode(latexInput.trim());
+    const res = await insertMathEquation(norm, true);
     setStatus(res.message);
   };
 
@@ -734,21 +742,23 @@ export const FormulaEditor: React.FC = () => {
       return;
     }
     setStatus('Đang chèn công thức dạng MathType ($...$) vào Word...');
-    const normLatex = normalizeMathLimits(latexInput.trim());
+    const normLatex = normalizeMathCode(latexInput.trim());
     const mathTypeText = `$${normLatex}$`;
     const res = await insertTextAtCursor(mathTypeText);
     setStatus(res.message);
   };
 
   const handleCopyLatex = () => {
-    navigator.clipboard.writeText(latexInput);
+    const norm = normalizeMathCode(latexInput.trim());
+    navigator.clipboard.writeText(norm);
     setCopiedLatex(true);
     setTimeout(() => setCopiedLatex(false), 2000);
   };
 
   const handleCopyMathML = () => {
     try {
-      const mathml = latexToMathML(latexInput);
+      const norm = normalizeMathCode(latexInput.trim());
+      const mathml = latexToMathML(norm);
       navigator.clipboard.writeText(mathml);
       setCopiedMathML(true);
       setTimeout(() => setCopiedMathML(false), 2000);
