@@ -153,6 +153,31 @@ export function cropImageFromCanvas(
 /**
  * Calls Gemini Vision API to parse document text, LaTeX formulas, and detect diagrams
  */
+function extractTextFromApiResponse(result: any): string {
+  if (result.output_text) return result.output_text;
+  if (Array.isArray(result.steps)) {
+    let out = '';
+    for (const step of result.steps) {
+      if (step.type === 'model_output' && Array.isArray(step.content)) {
+        for (const c of step.content) {
+          if (c.type === 'text' && c.text) {
+            out += c.text;
+          }
+        }
+      }
+    }
+    if (out) return out;
+  }
+  if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+    return result.candidates[0].content.parts[0].text;
+  }
+  return '';
+}
+
+/**
+ * Calls Gemini Vision API to parse document text, LaTeX formulas, and detect diagrams
+ * Employs 2026 Interactions API with automatic dynamic model discovery fallback
+ */
 export async function callGeminiVisionOcr(
   imageBase64: string,
   apiKey: string,
@@ -201,7 +226,139 @@ QUY TẮC BẮT BUỘC:
 }
 `;
 
-  const payload = {
+  const parseJsonResult = (rawText: string): ScanResult => {
+    let parsed: any;
+    try {
+      let cleanJson = rawText.trim();
+      const match = cleanJson.match(/\{[\s\S]*\}/);
+      if (match) cleanJson = match[0];
+      parsed = JSON.parse(cleanJson);
+    } catch (e) {
+      console.error('[MathAddin] Lỗi parse JSON từ Gemini:', rawText);
+      throw new Error('Định dạng phản hồi từ AI không hợp lệ. Vui lòng bấm Quét lại.');
+    }
+
+    const rawBlocks = Array.isArray(parsed.blocks) ? parsed.blocks : [];
+    const blocks: DocumentBlock[] = rawBlocks.map((b: any, idx: number) => ({
+      id: `block_${Date.now()}_${idx}`,
+      type: b.type === 'image' ? 'image' : 'paragraph',
+      content: b.content || '',
+      caption: b.caption || '',
+      box_2d: b.box_2d && Array.isArray(b.box_2d) && b.box_2d.length === 4 ? b.box_2d : undefined
+    }));
+
+    return {
+      title: parsed.title || 'Tài liệu đã quét',
+      blocks
+    };
+  };
+
+  let lastError: any = null;
+
+  // STRATEGY 1: 2026 Interactions API (Google's standard recommended API for gemini-2.5-flash)
+  try {
+    const interactionsUrl = `https://generativelanguage.googleapis.com/v1beta/interactions`;
+    const interactionsPayload = {
+      model: model || 'gemini-2.5-flash',
+      generation_config: {
+        temperature: 0.1,
+        response_mime_type: 'application/json'
+      },
+      input: [
+        {
+          type: 'text',
+          text: promptText
+        },
+        {
+          type: 'image',
+          data: cleanBase64,
+          mime_type: 'image/png'
+        }
+      ]
+    };
+
+    const resp = await fetch(interactionsUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': cleanKey
+      },
+      body: JSON.stringify(interactionsPayload)
+    });
+
+    if (resp.ok) {
+      const data = await resp.json();
+      const text = extractTextFromApiResponse(data);
+      if (text) {
+        return parseJsonResult(text);
+      }
+    } else {
+      const errData = await resp.json().catch(() => ({}));
+      console.warn('[MathAddin] Interactions API returned:', resp.status, errData);
+      lastError = new Error(`Lỗi Gemini API (${resp.status}): ${errData.error?.message || resp.statusText}`);
+    }
+  } catch (err: any) {
+    console.warn('[MathAddin] Interactions API network error:', err);
+    lastError = err;
+  }
+
+  // STRATEGY 2: Dynamic ListModels query to find active models on this user's key
+  let discoveredModels: string[] = [];
+  for (const apiVer of ['v1beta', 'v1']) {
+    try {
+      const lmResp = await fetch(`https://generativelanguage.googleapis.com/${apiVer}/models?key=${cleanKey}`, {
+        headers: { 'x-goog-api-key': cleanKey }
+      });
+      if (lmResp.ok) {
+        const lmData = await lmResp.json();
+        if (Array.isArray(lmData.models)) {
+          const valid = lmData.models
+            .filter((m: any) =>
+              Array.isArray(m.supportedGenerationMethods) &&
+              m.supportedGenerationMethods.includes('generateContent')
+            )
+            .map((m: any) => ({
+              apiVer,
+              name: m.name.replace(/^models\//, '')
+            }));
+
+          if (valid.length > 0) {
+            // Sort to prioritize gemini-2.5-flash and 1.5-flash
+            valid.sort((a: any, b: any) => {
+              const aScore =
+                (a.name.includes('2.5-flash') ? 20 : 0) +
+                (a.name.includes('1.5-flash') ? 10 : 0) +
+                (a.name.includes('flash') ? 5 : 0);
+              const bScore =
+                (b.name.includes('2.5-flash') ? 20 : 0) +
+                (b.name.includes('1.5-flash') ? 10 : 0) +
+                (b.name.includes('flash') ? 5 : 0);
+              return bScore - aScore;
+            });
+            for (const v of valid) {
+              discoveredModels.push(`${v.apiVer}::${v.name}`);
+            }
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[MathAddin] ListModels check error (${apiVer}):`, e);
+    }
+  }
+
+  if (discoveredModels.length === 0) {
+    discoveredModels = [
+      'v1beta::gemini-2.5-flash',
+      'v1::gemini-1.5-flash',
+      'v1beta::gemini-1.5-flash',
+      'v1::gemini-1.5-pro',
+      'v1beta::gemini-2.5-flash-lite'
+    ];
+  }
+
+  // STRATEGY 3: Legacy generateContent with discovered models
+  const legacyPayload = {
     contents: [
       {
         parts: [
@@ -221,83 +378,52 @@ QUY TẮC BẮT BUỘC:
     }
   };
 
-  // List of models to try in cascading order for 100% resilience against deprecation/404
-  const candidateModels = [
-    model,
-    'gemini-2.5-flash',
-    'gemini-1.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-1.5-flash-8b'
-  ].filter((m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx);
-
-  let lastError: any = null;
-
-  for (const candidate of candidateModels) {
+  for (const item of discoveredModels) {
+    const [apiVer, modName] = item.split('::');
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${candidate}:generateContent?key=${cleanKey}`;
+      const url = `https://generativelanguage.googleapis.com/${apiVer}/models/${modName}:generateContent?key=${cleanKey}`;
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': cleanKey
+        },
+        body: JSON.stringify(legacyPayload)
       });
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
         const errMsg = errData.error?.message || response.statusText;
 
-        // If model not found or deprecated (404), fall back to next model
         if (
           response.status === 404 ||
           errMsg.toLowerCase().includes('not found') ||
           errMsg.toLowerCase().includes('no longer available')
         ) {
-          console.warn(`[MathAddin] Mô hình ${candidate} không khả dụng (404), tự động chuyển sang mô hình tiếp theo...`);
+          console.warn(`[MathAddin] Model ${item} 404, thử tiếp...`);
           lastError = new Error(`Lỗi Gemini API (${response.status}): ${errMsg}`);
           continue;
         }
 
-        // Quota exceeded (429)
         if (response.status === 429) {
-          throw new Error('Đã đạt giới hạn số lượt quét miễn phí (15 lần/phút). Bạn vui lòng đợi khoảng 30 giây rồi bấm thử lại nhé!');
+          throw new Error('Đã đạt giới hạn số lượt quét miễn phí (15 lần/phút). Bạn vui lòng đợi 30 giây rồi bấm thử lại!');
         }
 
-        // Invalid API Key (400/403)
         if (response.status === 400 && errMsg.toLowerCase().includes('api_key_invalid')) {
           throw new Error('Khóa API không hợp lệ. Vui lòng kiểm tra lại khóa API Google AI Studio của bạn.');
         }
 
-        throw new Error(`Lỗi Gemini API (${response.status}): ${errMsg}`);
+        lastError = new Error(`Lỗi Gemini API (${response.status}): ${errMsg}`);
+        continue;
       }
 
       const result = await response.json();
-      const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      const rawText = extractTextFromApiResponse(result);
       if (!rawText) {
         throw new Error('Gemini không trả về nội dung nhận diện.');
       }
 
-      // Parse JSON
-      let parsed: any;
-      try {
-        const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-        parsed = JSON.parse(cleanJson);
-      } catch (e) {
-        console.error('[MathAddin] Lỗi parse JSON từ Gemini:', rawText);
-        throw new Error('Định dạng phản hồi từ AI không hợp lệ. Vui lòng thử lại.');
-      }
-
-      const rawBlocks = Array.isArray(parsed.blocks) ? parsed.blocks : [];
-      const blocks: DocumentBlock[] = rawBlocks.map((b: any, idx: number) => ({
-        id: `block_${Date.now()}_${idx}`,
-        type: b.type === 'image' ? 'image' : 'paragraph',
-        content: b.content || '',
-        caption: b.caption || '',
-        box_2d: b.box_2d && Array.isArray(b.box_2d) && b.box_2d.length === 4 ? b.box_2d : undefined
-      }));
-
-      return {
-        title: parsed.title || 'Tài liệu đã quét',
-        blocks
-      };
+      return parseJsonResult(rawText);
     } catch (err: any) {
       if (
         err.message &&
