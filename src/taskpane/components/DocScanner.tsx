@@ -38,6 +38,7 @@ import {
   callGeminiVisionOcr,
   insertDocumentBlocksToWord,
   insertSingleBlockToWord,
+  FormulaInsertMode,
   GEMINI_WEB_PROMPT,
   parseAiTextResponse
 } from '../services/aiScannerService';
@@ -163,6 +164,22 @@ export const DocScanner: React.FC = () => {
   });
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [apiKeySaved, setApiKeySaved] = useState<boolean>(false);
+
+  // Formula Insertion Mode: 'equation' (native Word OMML, no $) vs 'mathtype' (text with $...$)
+  const [formulaMode, setFormulaMode] = useState<FormulaInsertMode>(() => {
+    try {
+      return (localStorage.getItem('math_addin_formula_mode') as FormulaInsertMode) || 'equation';
+    } catch {
+      return 'equation';
+    }
+  });
+
+  const handleFormulaModeChange = (mode: FormulaInsertMode) => {
+    setFormulaMode(mode);
+    try {
+      localStorage.setItem('math_addin_formula_mode', mode);
+    } catch {}
+  };
 
   // Gemini Web Bridge State
   const [webResponseText, setWebResponseText] = useState<string>('');
@@ -369,8 +386,9 @@ export const DocScanner: React.FC = () => {
       setBlocks(processedBlocks);
 
       // Now immediately insert into Word at cursor!
-      setScanStatus('📝 Đang chèn trực tiếp toàn bộ công thức chuẩn Word Equation và hình vẽ vào Word...');
-      const res = await insertDocumentBlocksToWord(processedBlocks);
+      const modeText = formulaMode === 'mathtype' ? 'MathType ($...$)' : 'Word Equation';
+      setScanStatus(`📝 Đang chèn trực tiếp toàn bộ công thức (${modeText}) và hình vẽ vào Word...`);
+      const res = await insertDocumentBlocksToWord(processedBlocks, formulaMode);
       setScanStatus(`🎉 Hoàn tất 1-Click: ${res.message}`);
     } catch (err: any) {
       console.error('[MathAddin] Direct scan error:', err);
@@ -447,8 +465,9 @@ export const DocScanner: React.FC = () => {
     if (blocks.length === 0) return;
     try {
       setIsInserting(true);
-      setInsertStatus('Đang chuyển đổi và chèn toàn bộ nội dung vào vị trí con trỏ trong Word...');
-      const res = await insertDocumentBlocksToWord(blocks);
+      const modeText = formulaMode === 'mathtype' ? 'MathType ($...$)' : 'Word Equation';
+      setInsertStatus(`Đang chuyển đổi và chèn toàn bộ nội dung (${modeText}) vào vị trí con trỏ trong Word...`);
+      const res = await insertDocumentBlocksToWord(blocks, formulaMode);
       setInsertStatus(res.message);
     } catch (err: any) {
       setInsertStatus('Lỗi chèn vào Word: ' + (err.message || err));
@@ -460,8 +479,9 @@ export const DocScanner: React.FC = () => {
   // Insert a single block into Word at cursor
   const handleInsertSingleBlock = async (block: DocumentBlock) => {
     try {
-      setInsertStatus(`Đang chèn ${block.type === 'paragraph' ? 'đoạn văn bản & công thức' : 'hình ảnh'} vào Word...`);
-      const res = await insertSingleBlockToWord(block);
+      const modeText = formulaMode === 'mathtype' ? 'MathType ($...$)' : 'Word Equation';
+      setInsertStatus(`Đang chèn ${block.type === 'paragraph' ? `đoạn văn (${modeText})` : 'hình ảnh'} vào Word...`);
+      const res = await insertSingleBlockToWord(block, formulaMode);
       setInsertStatus(res.message);
     } catch (err: any) {
       setInsertStatus('Lỗi: ' + (err.message || err));
@@ -570,6 +590,57 @@ export const DocScanner: React.FC = () => {
           </div>
         )}
 
+        {/* Option: Formula Insertion Mode: Word Equation (OMML) vs MathType ($...$) */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: '#f8fafc',
+            padding: '8px 12px',
+            borderRadius: '6px',
+            border: '1px solid #c7e0f4',
+            flexWrap: 'wrap',
+            gap: '8px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Text weight="semibold" size={200} style={{ color: '#0f6cbd' }}>
+              📐 Kiểu công thức khi chèn vào Word:
+            </Text>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            <Button
+              size="small"
+              appearance={formulaMode === 'equation' ? 'primary' : 'outline'}
+              onClick={() => handleFormulaModeChange('equation')}
+              title="Chèn dạng chuẩn Microsoft Word Equation (OMML - Không có dấu $)"
+              style={{
+                fontSize: '11px',
+                fontWeight: formulaMode === 'equation' ? 600 : 400,
+                backgroundColor: formulaMode === 'equation' ? '#0f6cbd' : undefined,
+                color: formulaMode === 'equation' ? '#ffffff' : undefined
+              }}
+            >
+              ∑ Equation (Không có dấu $)
+            </Button>
+            <Button
+              size="small"
+              appearance={formulaMode === 'mathtype' ? 'primary' : 'outline'}
+              onClick={() => handleFormulaModeChange('mathtype')}
+              title="Chèn dạng MathType / LaTeX (trong dấu $...$ hoặc $$...$$ để chuyển bằng MathType hoặc BTN)"
+              style={{
+                fontSize: '11px',
+                fontWeight: formulaMode === 'mathtype' ? 600 : 400,
+                backgroundColor: formulaMode === 'mathtype' ? '#107c41' : undefined,
+                color: formulaMode === 'mathtype' ? '#ffffff' : undefined
+              }}
+            >
+              💲 MathType (Trong dấu $$)
+            </Button>
+          </div>
+        </div>
+
         {/* File / Clipboard Drop & Paste Zone */}
         <input
           ref={fileInputRef}
@@ -675,9 +746,15 @@ export const DocScanner: React.FC = () => {
               icon={isScanning ? <Spinner size="tiny" /> : <Sparkle20Regular />}
               disabled={isScanning}
               onClick={handleScanAndInsertDirectly}
-              style={{ marginTop: '6px', fontWeight: 'bold', backgroundColor: '#0f6cbd' }}
+              style={{
+                marginTop: '6px',
+                fontWeight: 'bold',
+                backgroundColor: formulaMode === 'mathtype' ? '#107c41' : '#0f6cbd'
+              }}
             >
-              {isScanning ? 'Đang tự động xử lý...' : '⚡ 1-Click: Quét AI & Tự động chèn thẳng vào Word'}
+              {isScanning
+                ? 'Đang tự động xử lý...'
+                : `⚡ 1-Click: Quét AI & Chèn vào Word (${formulaMode === 'mathtype' ? 'MathType $' : 'Word Equation'})`}
             </Button>
 
             <Button
@@ -893,8 +970,13 @@ export const DocScanner: React.FC = () => {
                 icon={isInserting ? <Spinner size="tiny" /> : <Add20Regular />}
                 disabled={isInserting}
                 onClick={handleInsertToWord}
+                style={{
+                  backgroundColor: formulaMode === 'mathtype' ? '#107c41' : '#0f6cbd'
+                }}
               >
-                {isInserting ? 'Đang chèn vào Word...' : 'Chèn tất cả vào Word tại con trỏ'}
+                {isInserting
+                  ? 'Đang chèn vào Word...'
+                  : `Chèn tất cả vào Word (${formulaMode === 'mathtype' ? 'MathType $' : 'Word Equation'})`}
               </Button>
             </div>
 

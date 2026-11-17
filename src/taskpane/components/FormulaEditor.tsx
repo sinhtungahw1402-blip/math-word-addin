@@ -31,7 +31,7 @@ import {
   CursorClick20Regular,
   Search20Regular
 } from '@fluentui/react-icons';
-import { insertMathEquation, latexToMathML } from '../services/wordService';
+import { insertMathEquation, latexToMathML, insertTextAtCursor } from '../services/wordService';
 
 // Configure MathLive fonts directory to use bundled offline fonts in /fonts
 if (typeof window !== 'undefined') {
@@ -728,6 +728,17 @@ export const FormulaEditor: React.FC = () => {
     setStatus(res.message);
   };
 
+  const handleInsertMathType = async () => {
+    if (!latexInput.trim()) {
+      setStatus('Vui lòng nhập công thức trước khi chèn.');
+      return;
+    }
+    setStatus('Đang chèn công thức dạng MathType ($...$) vào Word...');
+    const mathTypeText = `$${latexInput.trim()}$`;
+    const res = await insertTextAtCursor(mathTypeText);
+    setStatus(res.message);
+  };
+
   const handleCopyLatex = () => {
     navigator.clipboard.writeText(latexInput);
     setCopiedLatex(true);
@@ -981,6 +992,16 @@ export const FormulaEditor: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <Button
+                appearance="subtle"
+                size="medium"
+                icon={<Add20Regular />}
+                onClick={handleInsertMathType}
+                title="Chèn công thức dạng MathType ($...$) vào Word để chuyển đổi bằng MathType (Alt+\) hoặc công cụ BTN"
+                style={{ color: '#107c41', fontWeight: 600 }}
+              >
+                Chèn MathType ($...$)
+              </Button>
               <Button
                 appearance="secondary"
                 size="medium"

@@ -387,16 +387,33 @@ export async function callGeminiVisionOcr(
   throw lastError || new Error('Không thể kết nối đến mô hình Gemini AI. Vui lòng kiểm tra lại kết nối mạng hoặc thử lại sau 30 giây.');
 }
 
+export type FormulaInsertMode = 'equation' | 'mathtype';
+
 /**
  * Converts a text line or paragraph with mixed text and LaTeX into WordprocessingML (<w:p>)
- * Inline math $...$ -> <m:oMath>
- * Display math $$...$$ -> <m:oMathPara><m:oMath>
+ * - When formulaMode is 'equation': Converts $...$ and $$...$$ into native Word OMML (<m:oMath>) without $ symbols.
+ * - When formulaMode is 'mathtype': Keeps $...$ and $$...$$ delimiters intact in Times New Roman text for MathType (Alt+\) / BTN conversion.
  */
-export function convertMixedTextToOoxmlParagraphs(text: string): string {
+export function convertMixedTextToOoxmlParagraphs(
+  text: string,
+  formulaMode: FormulaInsertMode = 'equation'
+): string {
   const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
   let pXmlList = '';
 
   for (const line of lines) {
+    // Mode 2: MathType / LaTeX mode -> Preserve $...$ and $$...$$ intact
+    if (formulaMode === 'mathtype') {
+      const escaped = line
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const runXml = `<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t xml:space="preserve">${escaped}</w:t></w:r>`;
+      pXmlList += `<w:p><w:pPr><w:spacing w:after="80" w:line="276" w:lineRule="auto"/></w:pPr>${runXml}</w:p>`;
+      continue;
+    }
+
+    // Mode 1: Native Word Equation mode -> Convert $...$ to OMML, no $ in document
     const tokens: { type: 'text' | 'math'; content: string; isDisplay?: boolean }[] = [];
     let lastIndex = 0;
     const regex = /(\$\$[\s\S]+?\$\$|\$[^\$]+?\$)/g;
@@ -483,10 +500,15 @@ export function buildOoxmlPackageForParagraphs(pXmlList: string): string {
 
 /**
  * Inserts document blocks (paragraphs, OMML math, and interspersed images) into Word at cursor.
+ * - formulaMode 'equation': Inserts native Word OMML equations (no $ signs).
+ * - formulaMode 'mathtype': Preserves $...$ and $$...$$ text for MathType (Alt+\) or BTN tools.
  * Uses sequential per-item execution and cursor advance so that NO question (like Bài 30)
  * is ever skipped or dropped after an image.
  */
-export async function insertDocumentBlocksToWord(blocks: DocumentBlock[]): Promise<InsertionResult> {
+export async function insertDocumentBlocksToWord(
+  blocks: DocumentBlock[],
+  formulaMode: FormulaInsertMode = 'equation'
+): Promise<InsertionResult> {
   if (!isWordHost()) {
     return {
       success: false,
@@ -552,7 +574,7 @@ export async function insertDocumentBlocksToWord(blocks: DocumentBlock[]): Promi
 
           if (item.type === 'paragraphs') {
             try {
-              const pXml = convertMixedTextToOoxmlParagraphs(item.content);
+              const pXml = convertMixedTextToOoxmlParagraphs(item.content, formulaMode);
               const ooxml = buildOoxmlPackageForParagraphs(pXml);
 
               // If i === 0, replace current selection. If i > 0, insert on a clean paragraph below
@@ -625,9 +647,10 @@ export async function insertDocumentBlocksToWord(blocks: DocumentBlock[]): Promi
       }
     }
 
+    const modeDesc = formulaMode === 'mathtype' ? 'MathType (trong dấu $$)' : 'chuẩn Word Equation';
     return {
       success: true,
-      message: `Đã chuyển đổi và chèn thành công đầy đủ ${blocks.length} phần nội dung (gồm tất cả các câu hỏi và hình minh họa) vào Word!`
+      message: `Đã chèn thành công đầy đủ ${blocks.length} khối nội dung theo định dạng ${modeDesc} vào Word!`
     };
   } catch (error: any) {
     console.error('[MathAddin] Lỗi insertDocumentBlocksToWord:', error);
@@ -641,6 +664,9 @@ export async function insertDocumentBlocksToWord(blocks: DocumentBlock[]): Promi
 /**
  * Inserts a single document block into Word at cursor
  */
-export async function insertSingleBlockToWord(block: DocumentBlock): Promise<InsertionResult> {
-  return insertDocumentBlocksToWord([block]);
+export async function insertSingleBlockToWord(
+  block: DocumentBlock,
+  formulaMode: FormulaInsertMode = 'equation'
+): Promise<InsertionResult> {
+  return insertDocumentBlocksToWord([block], formulaMode);
 }
