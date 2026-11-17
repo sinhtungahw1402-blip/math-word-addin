@@ -156,14 +156,13 @@ export function cropImageFromCanvas(
 export async function callGeminiVisionOcr(
   imageBase64: string,
   apiKey: string,
-  model = 'gemini-2.0-flash'
+  model = 'gemini-2.5-flash'
 ): Promise<ScanResult> {
   const cleanKey = apiKey.trim();
   if (!cleanKey) {
     throw new Error('Vui lòng nhập khóa API Gemini (Google AI Studio) để sử dụng tính năng này.');
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
   const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
 
   const promptText = `
@@ -222,47 +221,97 @@ QUY TẮC BẮT BUỘC:
     }
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
+  // List of models to try in cascading order for 100% resilience against deprecation/404
+  const candidateModels = [
+    model,
+    'gemini-2.5-flash',
+    'gemini-1.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-1.5-flash-8b'
+  ].filter((m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx);
 
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    const errMsg = errData.error?.message || response.statusText;
-    throw new Error(`Lỗi Gemini API (${response.status}): ${errMsg}`);
+  let lastError: any = null;
+
+  for (const candidate of candidateModels) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${candidate}:generateContent?key=${cleanKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        const errMsg = errData.error?.message || response.statusText;
+
+        // If model not found or deprecated (404), fall back to next model
+        if (
+          response.status === 404 ||
+          errMsg.toLowerCase().includes('not found') ||
+          errMsg.toLowerCase().includes('no longer available')
+        ) {
+          console.warn(`[MathAddin] Mô hình ${candidate} không khả dụng (404), tự động chuyển sang mô hình tiếp theo...`);
+          lastError = new Error(`Lỗi Gemini API (${response.status}): ${errMsg}`);
+          continue;
+        }
+
+        // Quota exceeded (429)
+        if (response.status === 429) {
+          throw new Error('Đã đạt giới hạn số lượt quét miễn phí (15 lần/phút). Bạn vui lòng đợi khoảng 30 giây rồi bấm thử lại nhé!');
+        }
+
+        // Invalid API Key (400/403)
+        if (response.status === 400 && errMsg.toLowerCase().includes('api_key_invalid')) {
+          throw new Error('Khóa API không hợp lệ. Vui lòng kiểm tra lại khóa API Google AI Studio của bạn.');
+        }
+
+        throw new Error(`Lỗi Gemini API (${response.status}): ${errMsg}`);
+      }
+
+      const result = await response.json();
+      const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) {
+        throw new Error('Gemini không trả về nội dung nhận diện.');
+      }
+
+      // Parse JSON
+      let parsed: any;
+      try {
+        const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+        parsed = JSON.parse(cleanJson);
+      } catch (e) {
+        console.error('[MathAddin] Lỗi parse JSON từ Gemini:', rawText);
+        throw new Error('Định dạng phản hồi từ AI không hợp lệ. Vui lòng thử lại.');
+      }
+
+      const rawBlocks = Array.isArray(parsed.blocks) ? parsed.blocks : [];
+      const blocks: DocumentBlock[] = rawBlocks.map((b: any, idx: number) => ({
+        id: `block_${Date.now()}_${idx}`,
+        type: b.type === 'image' ? 'image' : 'paragraph',
+        content: b.content || '',
+        caption: b.caption || '',
+        box_2d: b.box_2d && Array.isArray(b.box_2d) && b.box_2d.length === 4 ? b.box_2d : undefined
+      }));
+
+      return {
+        title: parsed.title || 'Tài liệu đã quét',
+        blocks
+      };
+    } catch (err: any) {
+      if (
+        err.message &&
+        (err.message.includes('không hợp lệ') ||
+          err.message.includes('giới hạn') ||
+          err.message.includes('429'))
+      ) {
+        throw err;
+      }
+      lastError = err;
+    }
   }
 
-  const result = await response.json();
-  const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!rawText) {
-    throw new Error('Gemini không trả về nội dung nhận diện.');
-  }
-
-  // Parse JSON
-  let parsed: any;
-  try {
-    const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-    parsed = JSON.parse(cleanJson);
-  } catch (e) {
-    console.error('[MathAddin] Lỗi parse JSON từ Gemini:', rawText);
-    throw new Error('Định dạng phản hồi từ AI không hợp lệ. Vui lòng thử lại.');
-  }
-
-  const rawBlocks = Array.isArray(parsed.blocks) ? parsed.blocks : [];
-  const blocks: DocumentBlock[] = rawBlocks.map((b: any, idx: number) => ({
-    id: `block_${Date.now()}_${idx}`,
-    type: b.type === 'image' ? 'image' : 'paragraph',
-    content: b.content || '',
-    caption: b.caption || '',
-    box_2d: b.box_2d && Array.isArray(b.box_2d) && b.box_2d.length === 4 ? b.box_2d : undefined
-  }));
-
-  return {
-    title: parsed.title || 'Tài liệu đã quét',
-    blocks
-  };
+  throw lastError || new Error('Không thể kết nối đến mô hình Gemini AI. Vui lòng thử lại sau.');
 }
 
 /**

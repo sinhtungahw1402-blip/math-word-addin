@@ -153,7 +153,11 @@ export const DocScanner: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>(() => {
     return localStorage.getItem('gemini_api_key') || '';
   });
-  const [model, setModel] = useState<string>('gemini-2.0-flash');
+  const [model, setModel] = useState<string>(() => {
+    const saved = localStorage.getItem('gemini_model');
+    if (saved && saved !== 'gemini-2.0-flash') return saved;
+    return 'gemini-2.5-flash';
+  });
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [apiKeySaved, setApiKeySaved] = useState<boolean>(false);
 
@@ -411,7 +415,7 @@ export const DocScanner: React.FC = () => {
             </div>
 
             <Text size={100} style={{ color: '#555' }}>
-              Gemini Vision cung cấp khả năng OCR toán học và tách hình vẽ siêu chính xác. Miễn phí hoàn toàn:
+              Dịch vụ Google AI Studio hoàn toàn <b style={{ color: '#107c41' }}>MIỄN PHÍ 100%</b> (1500 lượt quét đề thi/ngày, không cần thẻ):
               <a
                 href="https://aistudio.google.com/app/apikey"
                 target="_blank"
@@ -435,11 +439,17 @@ export const DocScanner: React.FC = () => {
               </Button>
             </div>
 
-            <Field label="Mô hình AI:" size="small">
-              <Select value={model} onChange={(_, d) => setModel(d.value)}>
-                <option value="gemini-2.0-flash">Gemini 2.0 Flash (Tốc độ cao & chuẩn xác - Khuyên dùng)</option>
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Mới nhất & thông minh)</option>
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Ổn định)</option>
+            <Field label="Mô hình AI (Miễn phí 100%):" size="small">
+              <Select
+                value={model}
+                onChange={(_, d) => {
+                  setModel(d.value);
+                  localStorage.setItem('gemini_model', d.value);
+                }}
+              >
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Mới nhất, cực nhanh &amp; chuẩn xác - Khuyên dùng)</option>
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Bản ổn định lâu dài - Miễn phí)</option>
+                <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (Tốc độ cao - Miễn phí)</option>
               </Select>
             </Field>
           </div>
