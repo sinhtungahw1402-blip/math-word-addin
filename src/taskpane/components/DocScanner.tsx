@@ -546,6 +546,40 @@ export const DocScanner: React.FC = () => {
     }
   };
 
+  // Manually expand image crop margins if user needs wider view
+  const handleExpandImageCrop = (blockId: string) => {
+    if (!activeCanvas) return;
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (b.id !== blockId || b.type !== 'image' || !b.box_2d) return b;
+        const [y1, x1, y2, x2] = b.box_2d;
+        const h = y2 - y1;
+        const w = x2 - x1;
+        const expandY = Math.max(15, Math.round(h * 0.15));
+        const expandX = Math.max(20, Math.round(w * 0.15));
+        const newBox: [number, number, number, number] = [
+          Math.max(0, y1 - expandY),
+          Math.max(0, x1 - expandX),
+          Math.min(1000, y2 + expandY),
+          Math.min(1000, x2 + expandX)
+        ];
+        try {
+          const crop = cropImageFromCanvas(activeCanvas, newBox, 16);
+          return {
+            ...b,
+            box_2d: newBox,
+            imageBase64: crop.base64,
+            imageDataUrl: crop.dataUrl,
+            imageWidth: crop.width,
+            imageHeight: crop.height
+          };
+        } catch {
+          return b;
+        }
+      })
+    );
+  };
+
   // Copy full LaTeX text to clipboard
   const handleCopyAllText = () => {
     const fullText = blocks
@@ -997,6 +1031,16 @@ export const DocScanner: React.FC = () => {
                           )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Button
+                            size="small"
+                            appearance="subtle"
+                            icon={<Sparkle20Regular />}
+                            onClick={() => handleExpandImageCrop(block.id)}
+                            title="Nới rộng thêm lề xung quanh hình vẽ nếu bị cắt sát mép"
+                            style={{ fontSize: '11px', color: '#0f6cbd' }}
+                          >
+                            Nới rộng lề (+15%)
+                          </Button>
                           <Button
                             size="small"
                             appearance="subtle"

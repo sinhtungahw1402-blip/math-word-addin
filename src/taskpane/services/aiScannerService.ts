@@ -108,12 +108,179 @@ export async function loadImageToCanvas(imageFile: File | Blob): Promise<{ canva
 }
 
 /**
+ * Intelligently analyzes canvas pixels around an AI-predicted bounding box:
+ * If the bounding box cuts through diagram lines, shapes, or vertex labels (A, B, C, D, ...),
+ * it automatically expands outward until a clean margin of white background is reached.
+ */
+export function smartExpandBoundingBox(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  box: [number, number, number, number],
+  padding = 12
+): [number, number, number, number] {
+  let [top, left, bottom, right] = box;
+
+  // Clamp initial coordinates to canvas bounds
+  top = Math.max(0, Math.min(height - 1, top));
+  bottom = Math.max(0, Math.min(height - 1, bottom));
+  left = Math.max(0, Math.min(width - 1, left));
+  right = Math.max(0, Math.min(width - 1, right));
+
+  if (bottom <= top || right <= left) {
+    return [
+      Math.max(0, top - padding),
+      Math.max(0, left - padding),
+      Math.min(height, bottom + padding),
+      Math.min(width, right + padding)
+    ];
+  }
+
+  const boxW = right - left;
+  const boxH = bottom - top;
+
+  // Maximum search expansion (protect against runaway into adjacent columns or distant questions)
+  const maxExpandX = Math.max(60, Math.round(boxW * 0.45));
+  const maxExpandY = Math.max(30, Math.round(boxH * 0.22));
+
+  const minSearchLeft = Math.max(0, left - maxExpandX);
+  const maxSearchRight = Math.min(width - 1, right + maxExpandX);
+  const minSearchTop = Math.max(0, top - maxExpandY);
+  const maxSearchBottom = Math.min(height - 1, bottom + maxExpandY);
+
+  const searchW = maxSearchRight - minSearchLeft + 1;
+  const searchH = maxSearchBottom - minSearchTop + 1;
+
+  let imgData: ImageData;
+  try {
+    imgData = ctx.getImageData(minSearchLeft, minSearchTop, searchW, searchH);
+  } catch {
+    // If getImageData fails, fall back to simple padding
+    return [
+      Math.max(0, top - padding),
+      Math.max(0, left - padding),
+      Math.min(height, bottom + padding),
+      Math.min(width, right + padding)
+    ];
+  }
+
+  const data = imgData.data;
+  const stride = searchW;
+
+  const isInk = (x: number, y: number): boolean => {
+    if (x < minSearchLeft || x > maxSearchRight || y < minSearchTop || y > maxSearchBottom) return false;
+    const localX = x - minSearchLeft;
+    const localY = y - minSearchTop;
+    const idx = (localY * stride + localX) * 4;
+    const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+    // Dark ink (text/lines) or colored ink (colored diagrams, vertices, plots)
+    const isDark = (r + g + b) / 3 < 235;
+    const isColored = Math.abs(r - g) > 25 || Math.abs(g - b) > 25 || Math.abs(r - b) > 25;
+    return isDark || isColored;
+  };
+
+  // 1. Expand RIGHT:
+  let curRight = right;
+  const lookaheadX = 22;
+  while (curRight < maxSearchRight) {
+    let foundInk = false;
+    let furthestInkX = curRight;
+    for (let dx = 0; dx <= lookaheadX && curRight + dx <= maxSearchRight; dx++) {
+      for (let y = top; y <= bottom; y += 2) {
+        if (isInk(curRight + dx, y)) {
+          foundInk = true;
+          furthestInkX = curRight + dx;
+          break;
+        }
+      }
+    }
+    if (foundInk) {
+      curRight = furthestInkX + 1;
+    } else {
+      break;
+    }
+  }
+
+  // 2. Expand LEFT:
+  let curLeft = left;
+  while (curLeft > minSearchLeft) {
+    let foundInk = false;
+    let furthestInkX = curLeft;
+    for (let dx = 0; dx <= lookaheadX && curLeft - dx >= minSearchLeft; dx++) {
+      for (let y = top; y <= bottom; y += 2) {
+        if (isInk(curLeft - dx, y)) {
+          foundInk = true;
+          furthestInkX = curLeft - dx;
+          break;
+        }
+      }
+    }
+    if (foundInk) {
+      curLeft = furthestInkX - 1;
+    } else {
+      break;
+    }
+  }
+
+  // 3. Expand TOP (using updated horizontal boundaries):
+  let curTop = top;
+  const lookaheadY = 16;
+  while (curTop > minSearchTop) {
+    let foundInk = false;
+    let furthestInkY = curTop;
+    for (let dy = 0; dy <= lookaheadY && curTop - dy >= minSearchTop; dy++) {
+      for (let x = curLeft; x <= curRight; x += 2) {
+        if (isInk(x, curTop - dy)) {
+          foundInk = true;
+          furthestInkY = curTop - dy;
+          break;
+        }
+      }
+    }
+    if (foundInk) {
+      curTop = furthestInkY - 1;
+    } else {
+      break;
+    }
+  }
+
+  // 4. Expand BOTTOM:
+  let curBottom = bottom;
+  while (curBottom < maxSearchBottom) {
+    let foundInk = false;
+    let furthestInkY = curBottom;
+    for (let dy = 0; dy <= lookaheadY && curBottom + dy <= maxSearchBottom; dy++) {
+      for (let x = curLeft; x <= curRight; x += 2) {
+        if (isInk(x, curBottom + dy)) {
+          foundInk = true;
+          furthestInkY = curBottom + dy;
+          break;
+        }
+      }
+    }
+    if (foundInk) {
+      curBottom = furthestInkY + 1;
+    } else {
+      break;
+    }
+  }
+
+  return [
+    Math.max(0, curTop - padding),
+    Math.max(0, curLeft - padding),
+    Math.min(height, curBottom + padding),
+    Math.min(width, curRight + padding)
+  ];
+}
+
+/**
  * Crops a bounding box [ymin, xmin, ymax, xmax] (normalized 0-1000) from source canvas
+ * with intelligent edge detection and auto-expansion to prevent slicing diagrams or labels.
  */
 export function cropImageFromCanvas(
   sourceCanvas: HTMLCanvasElement,
   box_2d: [number, number, number, number],
-  padding = 6
+  padding = 10
 ): { base64: string; width: number; height: number; dataUrl: string } {
   const [y1, x1, y2, x2] = box_2d;
   const ymin = Math.max(0, Math.min(1000, Math.min(y1, y2)));
@@ -124,16 +291,31 @@ export function cropImageFromCanvas(
   const H = sourceCanvas.height;
 
   // Convert 0-1000 normalized coordinates to actual pixel bounds
-  const rawTop = (ymin / 1000) * H;
-  const rawLeft = (xmin / 1000) * W;
-  const rawBottom = (ymax / 1000) * H;
-  const rawRight = (xmax / 1000) * W;
+  const rawTop = Math.round((ymin / 1000) * H);
+  const rawLeft = Math.round((xmin / 1000) * W);
+  const rawBottom = Math.round((ymax / 1000) * H);
+  const rawRight = Math.round((xmax / 1000) * W);
 
-  // Add padding around diagram
-  const left = Math.max(0, Math.floor(rawLeft - padding));
-  const top = Math.max(0, Math.floor(rawTop - padding));
-  const right = Math.min(W, Math.ceil(rawRight + padding));
-  const bottom = Math.min(H, Math.ceil(rawBottom + padding));
+  const ctx = sourceCanvas.getContext('2d');
+  let top = rawTop;
+  let left = rawLeft;
+  let bottom = rawBottom;
+  let right = rawRight;
+
+  if (ctx) {
+    [top, left, bottom, right] = smartExpandBoundingBox(
+      ctx,
+      W,
+      H,
+      [rawTop, rawLeft, rawBottom, rawRight],
+      padding
+    );
+  } else {
+    top = Math.max(0, rawTop - padding);
+    left = Math.max(0, rawLeft - padding);
+    bottom = Math.min(H, rawBottom + padding);
+    right = Math.min(W, rawRight + padding);
+  }
 
   const cropW = Math.max(16, right - left);
   const cropH = Math.max(16, bottom - top);
@@ -141,15 +323,13 @@ export function cropImageFromCanvas(
   const cropCanvas = document.createElement('canvas');
   cropCanvas.width = cropW;
   cropCanvas.height = cropH;
-  const ctx = cropCanvas.getContext('2d');
-  if (!ctx) throw new Error('Cannot get 2D canvas context for crop');
+  const cropCtx = cropCanvas.getContext('2d');
+  if (!cropCtx) throw new Error('Cannot get 2D canvas context for crop');
 
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, cropW, cropH);
+  cropCtx.fillStyle = '#ffffff';
+  cropCtx.fillRect(0, 0, cropW, cropH);
 
-  const srcW = Math.min(cropW, Math.max(1, W - left));
-  const srcH = Math.min(cropH, Math.max(1, H - top));
-  ctx.drawImage(sourceCanvas, left, top, srcW, srcH, 0, 0, srcW, srcH);
+  cropCtx.drawImage(sourceCanvas, left, top, cropW, cropH, 0, 0, cropW, cropH);
 
   const dataUrl = cropCanvas.toDataURL('image/png');
   const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
@@ -223,7 +403,10 @@ QUY TẮC BẮT BUỘC:
    - Trong dòng kẹp giữa $: ví dụ $y = \\frac{2x+1}{x-1}$, $\\vec{u} = (1; 2)$.
    - Dòng riêng kẹp giữa $$: ví dụ $$\\int_{0}^{1} f(x) dx$$.
    - QUAN TRỌNG: Các toán tử giới hạn lim, max, min, sum, prod PHẢI LUÔN DÙNG \\limits (ví dụ $\\lim\\limits_{x \\to +\\infty}$, $\\max\\limits_{x \\in [a;b]}$, $\\sum\\limits_{i=1}^n$) để biến số nằm ngay dưới đáy toán tử theo chuẩn SGK Việt Nam.
-3. TÁCH HÌNH ẢNH MINH HỌA (Hình học không gian, hình phẳng, đồ thị hàm số):
+3. TÁCH HÌNH ẢNH MINH HỌA (Hình học không gian, hình phẳng, đồ thị hàm số, bảng biến thiên vẽ tay):
+   - BẮT BUỘC BAO TRỌN 100% TOÀN BỘ HÌNH VẼ: Phải bao gồm tất cả các đỉnh, cạnh ngoài cùng, các chữ cái ký hiệu đỉnh (A, B, C, D, A1, B1, C1, D1, S, O, x, y, z...), số đo, góc, mũi tên và chú thích của hình.
+   - TUYỆT ĐỐI KHÔNG ĐƯỢC CẮT XÉN BẤT KỲ CẠNH NÀO HAY CHỮ NÀO (đặc biệt các đỉnh, cạnh bên phải và bên dưới).
+   - NÊN LẤY RỘNG RA NGOÀI MỖI PHÍA (dư một khoảng trắng an toàn xung quanh hình vẽ, tốt hơn là bị cắt sát hoặc thiếu một phần hình).
    - Tạo khối "image", trả về tọa độ bounding box "box_2d": [ymin, xmin, ymax, xmax] từ 0 đến 1000.
 4. Trả về đúng định dạng JSON:
 {
