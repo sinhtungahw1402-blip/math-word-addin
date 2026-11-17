@@ -337,6 +337,199 @@ export function cropImageFromCanvas(
   return { base64, width: cropW, height: cropH, dataUrl };
 }
 
+export interface VisualDiagramRegion {
+  box_2d: [number, number, number, number]; // [ymin, xmin, ymax, xmax] 0-1000
+  pixelBounds: { top: number; bottom: number; left: number; right: number };
+  width: number;
+  height: number;
+}
+
+/**
+ * Scans source canvas for visual diagrams (graphs, geometric shapes, hand-drawn tables)
+ * that have distinct vertical heights (typically >= 60px) compared to standard text lines (18-35px).
+ */
+export function findVisualDiagrams(canvas: HTMLCanvasElement, minHeight = 60): VisualDiagramRegion[] {
+  const W = canvas.width;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return [];
+
+  let data: Uint8ClampedArray;
+  try {
+    data = ctx.getImageData(0, 0, W, H).data;
+  } catch {
+    return [];
+  }
+
+  // 1. Horizontal projection (ink count per row)
+  const rowInk = new Array(H).fill(0);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x += 2) {
+      const idx = (y * W + x) * 4;
+      const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+      if (gray < 225) rowInk[y]++;
+    }
+  }
+
+  // 2. Identify contiguous vertical ink regions
+  const regions: { startY: number; endY: number; height: number }[] = [];
+  let inRegion = false;
+  let startY = 0;
+  for (let y = 0; y < H; y++) {
+    if (rowInk[y] > 6) {
+      if (!inRegion) {
+        inRegion = true;
+        startY = y;
+      }
+    } else {
+      if (inRegion) {
+        inRegion = false;
+        const height = y - startY;
+        if (height >= minHeight) {
+          regions.push({ startY, endY: y, height });
+        }
+      }
+    }
+  }
+  if (inRegion && H - startY >= minHeight) {
+    regions.push({ startY, endY: H, height: H - startY });
+  }
+
+  // 3. For each diagram region, find exact horizontal bounds
+  const results: VisualDiagramRegion[] = [];
+  for (const reg of regions) {
+    let minX = W;
+    let maxX = 0;
+    for (let y = reg.startY; y <= reg.endY; y += 2) {
+      for (let x = 0; x < W; x += 2) {
+        const idx = (y * W + x) * 4;
+        const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+        if (gray < 225) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+        }
+      }
+    }
+    if (maxX > minX + 25) {
+      const ymin = Math.max(0, Math.round((reg.startY / H) * 1000));
+      const xmin = Math.max(0, Math.round((minX / W) * 1000));
+      const ymax = Math.min(1000, Math.round((reg.endY / H) * 1000));
+      const xmax = Math.min(1000, Math.round((maxX / W) * 1000));
+      results.push({
+        box_2d: [ymin, xmin, ymax, xmax],
+        pixelBounds: { top: reg.startY, bottom: reg.endY, left: minX, right: maxX },
+        height: reg.height,
+        width: maxX - minX
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Automatically inspects blocks and sourceCanvas:
+ * If an exam question explicitly mentions a diagram (e.g. "như hình vẽ", "có đồ thị")
+ * or a visual diagram is present on the canvas but was missed by Gemini AI,
+ * it automatically recovers and inserts the missing image block at the exact question position.
+ */
+export function autoRecoverMissingDiagrams(
+  blocks: DocumentBlock[],
+  canvas: HTMLCanvasElement | null
+): DocumentBlock[] {
+  if (!canvas || !blocks || blocks.length === 0) return blocks;
+
+  const diagrams = findVisualDiagrams(canvas);
+  if (diagrams.length === 0) return blocks;
+
+  const existingImageBoxes = blocks
+    .filter((b) => b.type === 'image' && b.box_2d)
+    .map((b) => b.box_2d as [number, number, number, number]);
+
+  // Identify which detected diagrams are not yet covered by any existing image block
+  const missingDiagrams = diagrams.filter((diag) => {
+    const [d_ymin, d_xmin, d_ymax, d_xmax] = diag.box_2d;
+    const isCovered = existingImageBoxes.some((box) => {
+      const [b_ymin, b_xmin, b_ymax, b_xmax] = box;
+      const ov_ymin = Math.max(d_ymin, b_ymin);
+      const ov_ymax = Math.min(d_ymax, b_ymax);
+      const ov_xmin = Math.max(d_xmin, b_xmin);
+      const ov_xmax = Math.min(d_xmax, b_xmax);
+      if (ov_ymax > ov_ymin && ov_xmax > ov_xmin) {
+        const ovArea = (ov_ymax - ov_ymin) * (ov_xmax - ov_xmin);
+        const diagArea = (d_ymax - d_ymin) * (d_xmax - d_xmin);
+        return ovArea / diagArea > 0.4;
+      }
+      return false;
+    });
+    return !isCovered;
+  });
+
+  if (missingDiagrams.length === 0) return blocks;
+
+  const resultBlocks: DocumentBlock[] = [];
+  let diagIdx = 0;
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    if (block.type === 'paragraph' && diagIdx < missingDiagrams.length) {
+      const contentStr = block.content || '';
+      const mentionsDiag =
+        /như hình vẽ|như hình bên|hình vẽ dưới đây|hình vẽ bên|hình bên|có đồ thị|đồ thị hàm số|bảng biến thiên|cho hình vẽ/i.test(
+          contentStr
+        );
+
+      if (mentionsDiag) {
+        const diag = missingDiagrams[diagIdx++];
+
+        // Check if paragraph contains options or text after the diagram mention (e.g. "Chọn khẳng định đúng...")
+        const splitMatch = contentStr.match(/(.*?như hình vẽ(?: dưới đây| bên)?)([\s\S]*)/i);
+        if (splitMatch && splitMatch[2].trim().length > 0) {
+          resultBlocks.push({
+            ...block,
+            content: splitMatch[1].trim()
+          });
+          resultBlocks.push({
+            id: `recovered_image_${Date.now()}_${diagIdx}`,
+            type: 'image',
+            box_2d: diag.box_2d,
+            caption: 'Hình vẽ minh họa'
+          });
+          resultBlocks.push({
+            id: `split_paragraph_${Date.now()}_${diagIdx}`,
+            type: 'paragraph',
+            content: splitMatch[2].trim()
+          });
+          continue;
+        } else {
+          resultBlocks.push(block);
+          resultBlocks.push({
+            id: `recovered_image_${Date.now()}_${diagIdx}`,
+            type: 'image',
+            box_2d: diag.box_2d,
+            caption: 'Hình vẽ minh họa'
+          });
+          continue;
+        }
+      }
+    }
+    resultBlocks.push(block);
+  }
+
+  // Any remaining unassigned missing diagrams, append to end
+  while (diagIdx < missingDiagrams.length) {
+    const diag = missingDiagrams[diagIdx++];
+    resultBlocks.push({
+      id: `recovered_image_${Date.now()}_${diagIdx}`,
+      type: 'image',
+      box_2d: diag.box_2d,
+      caption: 'Hình vẽ minh họa'
+    });
+  }
+
+  return resultBlocks;
+}
+
 /**
  * Optimizes an HTML5 Canvas image for ultra-fast AI Vision upload:
  * - Scales max dimension to maxDimension (default 1400px), maintaining aspect ratio
@@ -403,9 +596,11 @@ QUY TẮC BẮT BUỘC:
    - Trong dòng kẹp giữa $: ví dụ $y = \\frac{2x+1}{x-1}$, $\\vec{u} = (1; 2)$.
    - Dòng riêng kẹp giữa $$: ví dụ $$\\int_{0}^{1} f(x) dx$$.
    - QUAN TRỌNG: Các toán tử giới hạn lim, max, min, sum, prod PHẢI LUÔN DÙNG \\limits (ví dụ $\\lim\\limits_{x \\to +\\infty}$, $\\max\\limits_{x \\in [a;b]}$, $\\sum\\limits_{i=1}^n$) để biến số nằm ngay dưới đáy toán tử theo chuẩn SGK Việt Nam.
-3. TÁCH HÌNH ẢNH MINH HỌA (Hình học không gian, hình phẳng, đồ thị hàm số, bảng biến thiên vẽ tay):
-   - BẮT BUỘC BAO TRỌN 100% TOÀN BỘ HÌNH VẼ: Phải bao gồm tất cả các đỉnh, cạnh ngoài cùng, các chữ cái ký hiệu đỉnh (A, B, C, D, A1, B1, C1, D1, S, O, x, y, z...), số đo, góc, mũi tên và chú thích của hình.
-   - TUYỆT ĐỐI KHÔNG ĐƯỢC CẮT XÉN BẤT KỲ CẠNH NÀO HAY CHỮ NÀO (đặc biệt các đỉnh, cạnh bên phải và bên dưới).
+3. BẮT BUỘC TÁCH MỌI HÌNH ẢNH MINH HỌA & ĐỒ THỊ (Đồ thị hàm số, hệ trục xOy, hình học không gian, bảng biến thiên, hình phẳng):
+   - ĐẶC BIỆT LƯU Ý: Bất kỳ câu nào có chứa cụm từ "như hình vẽ", "như hình vẽ dưới đây", "như hình bên", "có đồ thị", "đồ thị như hình", "bảng biến thiên", HOẶC có hình vẽ / đồ thị dù là NÉT VẼ ĐEN TRẮNG ĐƠN GIẢN, HỆ TRỤC TỌA ĐỘ xOy: BẮT BUỘC 100% PHẢI TÁCH THÀNH 1 KHỐI "image" với box_2d đầy đủ!
+   - TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ QUA ĐỒ THỊ HÀM SỐ ĐEN TRẮNG HAY BẤT KỲ HÌNH VẼ NÀO!
+   - Vị trí khối "image": Đặt xen kẽ ngay sau câu hỏi và ngay trước các phương án trắc nghiệm A., B., C., D.
+   - BẮT BUỘC BAO TRỌN 100% TOÀN BỘ HÌNH VẼ: Phải bao gồm tất cả các trục Ox, Oy, đường tiệm cận, đường cong đồ thị, các đỉnh, cạnh ngoài cùng, các chữ cái ký hiệu (A, B, C, D, O, x, y...), số đo và chú thích.
    - NÊN LẤY RỘNG RA NGOÀI MỖI PHÍA (dư một khoảng trắng an toàn xung quanh hình vẽ, tốt hơn là bị cắt sát hoặc thiếu một phần hình).
    - Tạo khối "image", trả về tọa độ bounding box "box_2d": [ymin, xmin, ymax, xmax] từ 0 đến 1000.
 4. Trả về đúng định dạng JSON:

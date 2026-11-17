@@ -43,7 +43,9 @@ import {
   FormulaInsertMode,
   GEMINI_WEB_PROMPT,
   parseAiTextResponse,
-  repairAndNormalizeText
+  repairAndNormalizeText,
+  autoRecoverMissingDiagrams,
+  findVisualDiagrams
 } from '../services/aiScannerService';
 
 const useStyles = makeStyles({
@@ -188,6 +190,14 @@ export const DocScanner: React.FC = () => {
   const [webResponseText, setWebResponseText] = useState<string>('');
   const [copiedPrompt, setCopiedPrompt] = useState<boolean>(false);
 
+  // Manual Image Cropper State
+  const [showManualCropper, setShowManualCropper] = useState<boolean>(false);
+  const [cropperTargetIndex, setCropperTargetIndex] = useState<number>(-1);
+  const [cropRect, setCropRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const [isDraggingCrop, setIsDraggingCrop] = useState<boolean>(false);
+  const [cropStartPos, setCropStartPos] = useState<{ x: number; y: number } | null>(null);
+  const cropperImgRef = useRef<HTMLImageElement | null>(null);
+
   const handleCopyWebPrompt = () => {
     navigator.clipboard.writeText(GEMINI_WEB_PROMPT);
     setCopiedPrompt(true);
@@ -202,14 +212,17 @@ export const DocScanner: React.FC = () => {
       const res: ScanResult = parseAiTextResponse(webResponseText);
       setDocTitle(res.title || 'Tài liệu từ Gemini Web');
 
+      const recoveredBlocks = autoRecoverMissingDiagrams(res.blocks, activeCanvas);
+
       const processedBlocks: DocumentBlock[] = [];
-      for (const block of res.blocks) {
+      for (const block of recoveredBlocks) {
         if (block.type === 'image' && block.box_2d && activeCanvas) {
           try {
             const cropped = cropImageFromCanvas(activeCanvas, block.box_2d);
             processedBlocks.push({
               ...block,
               imageBase64: cropped.base64,
+              imageDataUrl: cropped.dataUrl,
               imageWidth: cropped.width,
               imageHeight: cropped.height
             });
@@ -397,8 +410,9 @@ export const DocScanner: React.FC = () => {
       setDocTitle(scanRes.title || 'Tài liệu');
       setScanStatus('🖼️ [3/3] Đang cắt hình gốc sắc nét và chèn thẳng vào Word...');
 
-      // Process blocks: Crop diagrams if box_2d is present
-      const processedBlocks: DocumentBlock[] = scanRes.blocks.map(block => {
+      // Process blocks: Auto-recover any missing diagrams & crop
+      const recoveredBlocks = autoRecoverMissingDiagrams(scanRes.blocks, activeCanvas);
+      const processedBlocks: DocumentBlock[] = recoveredBlocks.map(block => {
         if (block.type === 'image' && block.box_2d) {
           try {
             const crop = cropImageFromCanvas(activeCanvas, block.box_2d);
@@ -473,8 +487,9 @@ export const DocScanner: React.FC = () => {
       setDocTitle(scanRes.title || 'Tài liệu');
       setScanStatus('Đang tự động cắt và trích xuất các hình vẽ minh họa...');
 
-      // Process blocks: Crop diagrams if box_2d is present
-      const processedBlocks: DocumentBlock[] = scanRes.blocks.map(block => {
+      // Process blocks: Auto-recover any missing diagrams & crop
+      const recoveredBlocks = autoRecoverMissingDiagrams(scanRes.blocks, activeCanvas);
+      const processedBlocks: DocumentBlock[] = recoveredBlocks.map(block => {
         if (block.type === 'image' && block.box_2d) {
           try {
             const crop = cropImageFromCanvas(activeCanvas, block.box_2d);
@@ -598,6 +613,140 @@ export const DocScanner: React.FC = () => {
   // Delete block
   const handleDeleteBlock = (id: string) => {
     setBlocks(prev => prev.filter(b => b.id !== id));
+  };
+
+  // Manual cropper handlers
+  const handleQuickCropForBlock = (blockIndex: number) => {
+    if (!activeCanvas) return;
+    try {
+      const diagrams = findVisualDiagrams(activeCanvas);
+      if (diagrams.length > 0) {
+        const approxBlockRelPos = blockIndex / Math.max(1, blocks.length);
+        let bestDiag = diagrams[0];
+        let bestDiff = 999;
+        for (const diag of diagrams) {
+          const diagRelPos = diag.box_2d[0] / 1000;
+          const diff = Math.abs(diagRelPos - approxBlockRelPos);
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            bestDiag = diag;
+          }
+        }
+
+        const crop = cropImageFromCanvas(activeCanvas, bestDiag.box_2d, 16);
+        const newImgBlock: DocumentBlock = {
+          id: `manual_image_${Date.now()}`,
+          type: 'image',
+          box_2d: bestDiag.box_2d,
+          imageBase64: crop.base64,
+          imageDataUrl: crop.dataUrl,
+          imageWidth: crop.width,
+          imageHeight: crop.height,
+          caption: 'Hình vẽ minh họa'
+        };
+
+        const newBlocks = [...blocks];
+        newBlocks.splice(blockIndex + 1, 0, newImgBlock);
+        setBlocks(newBlocks);
+        setScanStatus(`🎉 Đã tự động phát hiện và chèn hình vẽ (${crop.width}×${crop.height} px) ngay sau câu hỏi!`);
+      } else {
+        setCropperTargetIndex(blockIndex);
+        setShowManualCropper(true);
+      }
+    } catch {
+      setCropperTargetIndex(blockIndex);
+      setShowManualCropper(true);
+    }
+  };
+
+  const handleCropMouseDown = (e: React.MouseEvent) => {
+    if (!cropperImgRef.current) return;
+    const rect = cropperImgRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+    setCropStartPos({ x, y });
+    setCropRect({ left: x, top: y, width: 0, height: 0 });
+    setIsDraggingCrop(true);
+  };
+
+  const handleCropMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingCrop || !cropStartPos || !cropperImgRef.current) return;
+    const rect = cropperImgRef.current.getBoundingClientRect();
+    const curX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const curY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+    const left = Math.min(cropStartPos.x, curX);
+    const top = Math.min(cropStartPos.y, curY);
+    const width = Math.abs(curX - cropStartPos.x);
+    const height = Math.abs(curY - cropStartPos.y);
+    setCropRect({ left, top, width, height });
+  };
+
+  const handleCropMouseUp = () => {
+    setIsDraggingCrop(false);
+  };
+
+  const handleAutoSelectDiagramInCropper = () => {
+    if (!activeCanvas || !cropperImgRef.current) return;
+    const diagrams = findVisualDiagrams(activeCanvas);
+    if (diagrams.length === 0) {
+      setScanStatus('Không phát hiện thấy hình vẽ lớn nào khác trên trang này.');
+      return;
+    }
+    const rect = cropperImgRef.current.getBoundingClientRect();
+    const scaleX = rect.width / activeCanvas.width;
+    const scaleY = rect.height / activeCanvas.height;
+    const diag = diagrams[0];
+    const { left, top, right, bottom } = diag.pixelBounds;
+    setCropRect({
+      left: Math.round(left * scaleX),
+      top: Math.round(top * scaleY),
+      width: Math.round((right - left) * scaleX),
+      height: Math.round((bottom - top) * scaleY)
+    });
+  };
+
+  const handleConfirmManualCrop = () => {
+    if (!activeCanvas || !cropRect || !cropperImgRef.current) return;
+    const rect = cropperImgRef.current.getBoundingClientRect();
+    const scaleX = activeCanvas.width / rect.width;
+    const scaleY = activeCanvas.height / rect.height;
+
+    const canvasLeft = Math.round(cropRect.left * scaleX);
+    const canvasTop = Math.round(cropRect.top * scaleY);
+    const canvasRight = Math.round((cropRect.left + cropRect.width) * scaleX);
+    const canvasBottom = Math.round((cropRect.top + cropRect.height) * scaleY);
+
+    const ymin = Math.max(0, Math.round((canvasTop / activeCanvas.height) * 1000));
+    const xmin = Math.max(0, Math.round((canvasLeft / activeCanvas.width) * 1000));
+    const ymax = Math.min(1000, Math.round((canvasBottom / activeCanvas.height) * 1000));
+    const xmax = Math.min(1000, Math.round((canvasRight / activeCanvas.width) * 1000));
+
+    const box_2d: [number, number, number, number] = [ymin, xmin, ymax, xmax];
+    try {
+      const crop = cropImageFromCanvas(activeCanvas, box_2d, 12);
+      const newImgBlock: DocumentBlock = {
+        id: `manual_img_${Date.now()}`,
+        type: 'image',
+        box_2d,
+        imageBase64: crop.base64,
+        imageDataUrl: crop.dataUrl,
+        imageWidth: crop.width,
+        imageHeight: crop.height,
+        caption: 'Hình vẽ minh họa'
+      };
+
+      const newBlocks = [...blocks];
+      const insertAt =
+        cropperTargetIndex >= 0 && cropperTargetIndex < blocks.length ? cropperTargetIndex + 1 : blocks.length;
+      newBlocks.splice(insertAt, 0, newImgBlock);
+      setBlocks(newBlocks);
+
+      setShowManualCropper(false);
+      setCropRect(null);
+      setScanStatus(`🎉 Đã thêm hình vẽ minh họa (${crop.width}×${crop.height} px) vào danh sách!`);
+    } catch (err: any) {
+      setScanStatus(`Lỗi cắt hình: ${err.message || err}`);
+    }
   };
 
   return (
@@ -946,6 +1095,91 @@ export const DocScanner: React.FC = () => {
           </div>
         )}
 
+        {/* MANUAL IMAGE CROPPER TOOL */}
+        {showManualCropper && activeCanvas && (
+          <Card style={{ marginTop: '10px', border: '2px solid #0f6cbd', padding: '10px', backgroundColor: '#f9fbfd' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Sparkle20Regular style={{ color: '#0f6cbd' }} />
+                <Text weight="semibold" style={{ color: '#0f6cbd', fontSize: '13px' }}>
+                  ✂️ Cắt hình minh họa từ ảnh gốc
+                </Text>
+              </div>
+              <Button size="small" appearance="subtle" icon={<Dismiss20Regular />} onClick={() => setShowManualCropper(false)} />
+            </div>
+            <Text size={100} style={{ color: '#555', marginTop: '2px' }}>
+              Kéo chuột trên ảnh để chọn vùng hình cần cắt, hoặc bấm <strong>&quot;Tự động tìm hình&quot;</strong>:
+            </Text>
+
+            {/* Interactive Crop Area */}
+            <div
+              onMouseDown={handleCropMouseDown}
+              onMouseMove={handleCropMouseMove}
+              onMouseUp={handleCropMouseUp}
+              style={{
+                position: 'relative',
+                maxWidth: '100%',
+                maxHeight: '260px',
+                overflow: 'auto',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                marginTop: '8px',
+                cursor: 'crosshair',
+                userSelect: 'none',
+                backgroundColor: '#eee'
+              }}
+            >
+              <img
+                ref={cropperImgRef}
+                src={activeCanvas.toDataURL()}
+                alt="Ảnh gốc"
+                style={{ display: 'block', maxWidth: '100%', height: 'auto', pointerEvents: 'none' }}
+              />
+              {cropRect && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: `${cropRect.left}px`,
+                    top: `${cropRect.top}px`,
+                    width: `${cropRect.width}px`,
+                    height: `${cropRect.height}px`,
+                    border: '2px dashed #0f6cbd',
+                    backgroundColor: 'rgba(15, 108, 189, 0.25)',
+                    pointerEvents: 'none'
+                  }}
+                />
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', gap: '6px', flexWrap: 'wrap' }}>
+              <Button
+                size="small"
+                appearance="outline"
+                icon={<Sparkle20Regular />}
+                onClick={handleAutoSelectDiagramInCropper}
+                style={{ fontSize: '11px', color: '#107c41' }}
+              >
+                ⚡ Tự động tìm hình
+              </Button>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <Button size="small" appearance="subtle" onClick={() => setShowManualCropper(false)} style={{ fontSize: '11px' }}>
+                  Hủy
+                </Button>
+                <Button
+                  size="small"
+                  appearance="primary"
+                  icon={<Checkmark20Regular />}
+                  disabled={!cropRect || cropRect.width < 10 || cropRect.height < 10}
+                  onClick={handleConfirmManualCrop}
+                  style={{ fontSize: '11px', backgroundColor: '#0f6cbd' }}
+                >
+                  Xác nhận thêm hình
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* RECOGNITION RESULTS (Blocks list with interspersed images) */}
         {blocks.length > 0 && (
           <div>
@@ -953,15 +1187,32 @@ export const DocScanner: React.FC = () => {
               <Text weight="semibold" size={300} style={{ color: '#0f6cbd' }}>
                 📋 {docTitle ? `${docTitle} (${blocks.length} khối):` : `Kết quả nhận diện (${blocks.length} khối):`}
               </Text>
-              <Button
-                size="small"
-                appearance="subtle"
-                icon={<ArrowReset20Regular />}
-                onClick={() => setBlocks([])}
-                style={{ fontSize: '11px', color: '#d13438' }}
-              >
-                Xóa kết quả
-              </Button>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {activeCanvas && (
+                  <Button
+                    size="small"
+                    appearance="subtle"
+                    icon={<Sparkle20Regular />}
+                    onClick={() => {
+                      setCropperTargetIndex(blocks.length - 1);
+                      setShowManualCropper(true);
+                    }}
+                    style={{ fontSize: '11px', color: '#107c41' }}
+                    title="Cắt thêm hình vẽ từ ảnh gốc nếu AI nhận diện thiếu"
+                  >
+                    ✂️ Cắt thêm hình
+                  </Button>
+                )}
+                <Button
+                  size="small"
+                  appearance="subtle"
+                  icon={<ArrowReset20Regular />}
+                  onClick={() => setBlocks([])}
+                  style={{ fontSize: '11px', color: '#d13438' }}
+                >
+                  Xóa kết quả
+                </Button>
+              </div>
             </div>
 
             <div className={styles.blocksList}>
@@ -1011,6 +1262,39 @@ export const DocScanner: React.FC = () => {
                           }}
                         />
                       </div>
+
+                      {/* Alert if question mentions a diagram but no image block follows */}
+                      {activeCanvas &&
+                        /như hình vẽ|như hình bên|hình vẽ dưới đây|có đồ thị|đồ thị hàm số|bảng biến thiên/i.test(
+                          block.content || ''
+                        ) &&
+                        blocks[idx + 1]?.type !== 'image' && (
+                          <div
+                            style={{
+                              marginTop: '6px',
+                              padding: '6px 10px',
+                              backgroundColor: '#fff4ce',
+                              borderRadius: '4px',
+                              border: '1px solid #ffd335',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            <Text size={100} style={{ color: '#795b00' }}>
+                              💡 Câu này có nhắc đến hình vẽ nhưng chưa có khối ảnh.
+                            </Text>
+                            <Button
+                              size="small"
+                              appearance="primary"
+                              icon={<Sparkle20Regular />}
+                              onClick={() => handleQuickCropForBlock(idx)}
+                              style={{ fontSize: '11px', backgroundColor: '#107c41', color: '#fff' }}
+                            >
+                              Tự động lấy hình
+                            </Button>
+                          </div>
+                        )}
                     </div>
                   );
                 }
