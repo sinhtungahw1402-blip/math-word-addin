@@ -322,6 +322,63 @@ export const DocScanner: React.FC = () => {
     }
   };
 
+  // 1-Click: Scan with AI AND insert directly into Word at cursor
+  const handleScanAndInsertDirectly = async () => {
+    if (!activeCanvas) {
+      setScanStatus('Chưa có ảnh hoặc PDF nào được tải lên.');
+      return;
+    }
+
+    if (!apiKey.trim()) {
+      setShowSettings(true);
+      setScanStatus('⚠️ Vui lòng nhập khóa API Gemini (Google AI Studio) ở phần Cài đặt.');
+      return;
+    }
+
+    try {
+      setIsScanning(true);
+      setScanStatus('🚀 [1-Click] Đang nhận diện văn bản & công thức toán bằng AI...');
+
+      const fullImageBase64 = activeCanvas.toDataURL('image/png');
+      const scanRes: ScanResult = await callGeminiVisionOcr(fullImageBase64, apiKey, model);
+
+      setDocTitle(scanRes.title || 'Tài liệu');
+      setScanStatus('🖼️ Đang tự động cắt các hình vẽ minh họa...');
+
+      // Process blocks: Crop diagrams if box_2d is present
+      const processedBlocks: DocumentBlock[] = scanRes.blocks.map(block => {
+        if (block.type === 'image' && block.box_2d) {
+          try {
+            const crop = cropImageFromCanvas(activeCanvas, block.box_2d);
+            return {
+              ...block,
+              imageBase64: crop.base64,
+              imageDataUrl: crop.dataUrl,
+              imageWidth: crop.width,
+              imageHeight: crop.height
+            };
+          } catch (cropErr) {
+            console.warn('[MathAddin] Crop diagram warning:', cropErr);
+            return block;
+          }
+        }
+        return block;
+      });
+
+      setBlocks(processedBlocks);
+
+      // Now immediately insert into Word at cursor!
+      setScanStatus('📝 Đang chèn trực tiếp toàn bộ công thức chuẩn Word Equation và hình vẽ vào Word...');
+      const res = await insertDocumentBlocksToWord(processedBlocks);
+      setScanStatus(`🎉 Hoàn tất 1-Click: ${res.message}`);
+    } catch (err: any) {
+      console.error('[MathAddin] Direct scan error:', err);
+      setScanStatus(`❌ Lỗi: ${err.message || err}`);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
   // Perform AI Scan
   const handleStartScan = async () => {
     if (!activeCanvas) {
@@ -599,16 +656,26 @@ export const DocScanner: React.FC = () => {
               />
             </div>
 
-            {/* Scan Action Button */}
+            {/* 1-Click Scan & Insert Action Button */}
             <Button
               appearance="primary"
               size="medium"
               icon={isScanning ? <Spinner size="tiny" /> : <Sparkle20Regular />}
               disabled={isScanning}
-              onClick={handleStartScan}
-              style={{ marginTop: '4px' }}
+              onClick={handleScanAndInsertDirectly}
+              style={{ marginTop: '6px', fontWeight: 'bold', backgroundColor: '#0f6cbd' }}
             >
-              {isScanning ? 'Đang phân tích tài liệu...' : '🚀 Bắt đầu Quét & Tách hình ảnh (Tự động API)'}
+              {isScanning ? 'Đang tự động xử lý...' : '⚡ 1-Click: Quét AI & Tự động chèn thẳng vào Word'}
+            </Button>
+
+            <Button
+              appearance="subtle"
+              size="small"
+              disabled={isScanning}
+              onClick={handleStartScan}
+              style={{ fontSize: '11px', color: '#605e5c', marginTop: '2px' }}
+            >
+              🔍 Hoặc quét xem trước kết quả trước khi chèn
             </Button>
 
             {/* Direct Gemini Web Bridge (Uses user's own Gemini Pro web account) */}
