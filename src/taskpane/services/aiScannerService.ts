@@ -305,7 +305,8 @@ export async function callGeminiVisionOcr(
   imageBase64: string,
   apiKey: string,
   model = 'gemini-3.8-flash',
-  mimeType = 'image/jpeg'
+  mimeType = 'image/jpeg',
+  externalSignal?: AbortSignal
 ): Promise<ScanResult> {
   const cleanKey = apiKey.trim();
   if (!cleanKey) {
@@ -345,7 +346,11 @@ export async function callGeminiVisionOcr(
 
   for (const mod of candidateModels) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    const timeoutId = setTimeout(() => controller.abort(), 35000);
+
+    if (externalSignal) {
+      externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
 
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${cleanKey}`;
@@ -393,7 +398,10 @@ export async function callGeminiVisionOcr(
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        throw new Error('Thời gian gửi ảnh tới AI quá lâu (hơn 45s). Ảnh quá lớn hoặc mạng yếu, bạn có thể chọn mô hình Gemini 3.5 Flash Lite để tốc độ nhanh hơn!');
+        if (externalSignal?.aborted) {
+          throw new Error('Đã dừng và hủy quét theo yêu cầu.');
+        }
+        throw new Error('Thời gian phản hồi quá lâu (hơn 35s). Mạng internet có thể bị nghẽn, bạn vui lòng thử lại hoặc chọn mô hình Gemini 3.5 Flash Lite siêu tốc trong Cài đặt!');
       }
       if (
         err.message &&
@@ -409,6 +417,12 @@ export async function callGeminiVisionOcr(
 
   // 2. Secondary fallback: 2026 Interactions API
   try {
+    const intController = new AbortController();
+    const intTimeoutId = setTimeout(() => intController.abort(), 15000);
+    if (externalSignal) {
+      externalSignal.addEventListener('abort', () => intController.abort(), { once: true });
+    }
+
     const interactionsUrl = `https://generativelanguage.googleapis.com/v1beta/interactions`;
     const interactionsPayload = {
       model: chosenModel,
@@ -435,8 +449,10 @@ export async function callGeminiVisionOcr(
         'Content-Type': 'application/json',
         'x-goog-api-key': cleanKey
       },
-      body: JSON.stringify(interactionsPayload)
+      body: JSON.stringify(interactionsPayload),
+      signal: intController.signal
     });
+    clearTimeout(intTimeoutId);
 
     if (resp.ok) {
       const data = await resp.json();

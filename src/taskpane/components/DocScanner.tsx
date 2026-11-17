@@ -25,7 +25,8 @@ import {
   ChevronRight20Regular,
   Settings20Regular,
   Sparkle20Regular,
-  Add20Regular
+  Add20Regular,
+  Dismiss20Regular
 } from '@fluentui/react-icons';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
@@ -240,11 +241,29 @@ export const DocScanner: React.FC = () => {
   // Scanning State & Results
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [scanStatus, setScanStatus] = useState<string>('');
+  const [scanTimerText, setScanTimerText] = useState<string>('');
+  const scanAbortControllerRef = useRef<AbortController | null>(null);
+  const scanTimerIntervalRef = useRef<any>(null);
   const [blocks, setBlocks] = useState<DocumentBlock[]>([]);
   const [docTitle, setDocTitle] = useState<string>('');
   const [insertStatus, setInsertStatus] = useState<string>('');
   const [isInserting, setIsInserting] = useState<boolean>(false);
   const [copiedAll, setCopiedAll] = useState<boolean>(false);
+
+  // Stop/cancel ongoing scan immediately
+  const handleCancelScan = () => {
+    if (scanTimerIntervalRef.current) {
+      clearInterval(scanTimerIntervalRef.current);
+      scanTimerIntervalRef.current = null;
+    }
+    if (scanAbortControllerRef.current) {
+      scanAbortControllerRef.current.abort();
+      scanAbortControllerRef.current = null;
+    }
+    setIsScanning(false);
+    setScanTimerText('');
+    setScanStatus('⏹️ Đã dừng và hủy quét theo yêu cầu.');
+  };
 
   // Save API key
   const handleSaveApiKey = () => {
@@ -354,6 +373,16 @@ export const DocScanner: React.FC = () => {
       return;
     }
 
+    const controller = new AbortController();
+    scanAbortControllerRef.current = controller;
+
+    let seconds = 0;
+    if (scanTimerIntervalRef.current) clearInterval(scanTimerIntervalRef.current);
+    scanTimerIntervalRef.current = setInterval(() => {
+      seconds++;
+      setScanTimerText(`(${seconds}s)`);
+    }, 1000);
+
     try {
       setIsScanning(true);
       setScanStatus('⚡ [1/3] Đang tối ưu dung lượng ảnh (giảm 95% để truyền tải siêu tốc)...');
@@ -362,7 +391,7 @@ export const DocScanner: React.FC = () => {
       const { base64: optBase64, mimeType } = prepareOptimizedImageForAi(activeCanvas, 1400, 0.85);
 
       setScanStatus('🧠 [2/3] Gemini AI đang đọc toàn bộ đề thi, công thức và phát hiện hình vẽ...');
-      const scanRes: ScanResult = await callGeminiVisionOcr(optBase64, apiKey, model, mimeType);
+      const scanRes: ScanResult = await callGeminiVisionOcr(optBase64, apiKey, model, mimeType, controller.signal);
 
       setDocTitle(scanRes.title || 'Tài liệu');
       setScanStatus('🖼️ [3/3] Đang cắt hình gốc sắc nét và chèn thẳng vào Word...');
@@ -398,7 +427,13 @@ export const DocScanner: React.FC = () => {
       console.error('[MathAddin] Direct scan error:', err);
       setScanStatus(`❌ Lỗi: ${err.message || err}`);
     } finally {
+      if (scanTimerIntervalRef.current) {
+        clearInterval(scanTimerIntervalRef.current);
+        scanTimerIntervalRef.current = null;
+      }
+      scanAbortControllerRef.current = null;
       setIsScanning(false);
+      setScanTimerText('');
     }
   };
 
@@ -415,6 +450,16 @@ export const DocScanner: React.FC = () => {
       return;
     }
 
+    const controller = new AbortController();
+    scanAbortControllerRef.current = controller;
+
+    let seconds = 0;
+    if (scanTimerIntervalRef.current) clearInterval(scanTimerIntervalRef.current);
+    scanTimerIntervalRef.current = setInterval(() => {
+      seconds++;
+      setScanTimerText(`(${seconds}s)`);
+    }, 1000);
+
     try {
       setIsScanning(true);
       setScanStatus('⚡ [1/2] Đang tối ưu dung lượng ảnh (giảm 95% để truyền tải siêu tốc)...');
@@ -422,7 +467,7 @@ export const DocScanner: React.FC = () => {
       const { base64: optBase64, mimeType } = prepareOptimizedImageForAi(activeCanvas, 1400, 0.85);
 
       setScanStatus('🧠 [2/2] Gemini AI đang đọc toàn bộ đề thi, công thức và phát hiện hình vẽ...');
-      const scanRes: ScanResult = await callGeminiVisionOcr(optBase64, apiKey, model, mimeType);
+      const scanRes: ScanResult = await callGeminiVisionOcr(optBase64, apiKey, model, mimeType, controller.signal);
 
       setDocTitle(scanRes.title || 'Tài liệu');
       setScanStatus('Đang tự động cắt và trích xuất các hình vẽ minh họa...');
@@ -455,7 +500,13 @@ export const DocScanner: React.FC = () => {
       console.error('[MathAddin] Scan error:', err);
       setScanStatus(`❌ Lỗi: ${err.message || err}`);
     } finally {
+      if (scanTimerIntervalRef.current) {
+        clearInterval(scanTimerIntervalRef.current);
+        scanTimerIntervalRef.current = null;
+      }
+      scanAbortControllerRef.current = null;
       setIsScanning(false);
+      setScanTimerText('');
     }
   };
 
@@ -745,33 +796,63 @@ export const DocScanner: React.FC = () => {
               />
             </div>
 
-            {/* 1-Click Scan & Insert Action Button */}
-            <Button
-              appearance="primary"
-              size="medium"
-              icon={isScanning ? <Spinner size="tiny" /> : <Sparkle20Regular />}
-              disabled={isScanning}
-              onClick={handleScanAndInsertDirectly}
-              style={{
-                marginTop: '6px',
-                fontWeight: 'bold',
-                backgroundColor: formulaMode === 'mathtype' ? '#107c41' : '#0f6cbd'
-              }}
-            >
-              {isScanning
-                ? '⚡ Đang xử lý siêu tốc...'
-                : `⚡ 1-Click: Quét AI & Chèn vào Word (${formulaMode === 'mathtype' ? 'MathType $' : 'Word Equation'})`}
-            </Button>
+            {/* 1-Click Scan & Insert Action Button + Cancel Option */}
+            {isScanning ? (
+              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                <Button
+                  appearance="primary"
+                  size="medium"
+                  icon={<Spinner size="tiny" />}
+                  disabled={true}
+                  style={{
+                    flexGrow: 1,
+                    fontWeight: 'bold',
+                    backgroundColor: formulaMode === 'mathtype' ? '#107c41' : '#0f6cbd'
+                  }}
+                >
+                  ⚡ Đang xử lý {scanTimerText}...
+                </Button>
+                <Button
+                  appearance="outline"
+                  size="medium"
+                  icon={<Dismiss20Regular />}
+                  onClick={handleCancelScan}
+                  title="Dừng và hủy thao tác quét ngay lập tức"
+                  style={{
+                    color: '#d13438',
+                    borderColor: '#d13438',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  ✕ Dừng lại
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Button
+                  appearance="primary"
+                  size="medium"
+                  icon={<Sparkle20Regular />}
+                  onClick={handleScanAndInsertDirectly}
+                  style={{
+                    marginTop: '6px',
+                    fontWeight: 'bold',
+                    backgroundColor: formulaMode === 'mathtype' ? '#107c41' : '#0f6cbd'
+                  }}
+                >
+                  {`⚡ 1-Click: Quét AI & Chèn vào Word (${formulaMode === 'mathtype' ? 'MathType $' : 'Word Equation'})`}
+                </Button>
 
-            <Button
-              appearance="subtle"
-              size="small"
-              disabled={isScanning}
-              onClick={handleStartScan}
-              style={{ fontSize: '11px', color: '#605e5c', marginTop: '2px' }}
-            >
-              🔍 Hoặc quét xem trước kết quả trước khi chèn
-            </Button>
+                <Button
+                  appearance="subtle"
+                  size="small"
+                  onClick={handleStartScan}
+                  style={{ fontSize: '11px', color: '#605e5c', marginTop: '2px' }}
+                >
+                  🔍 Hoặc quét xem trước kết quả trước khi chèn
+                </Button>
+              </>
+            )}
 
             {/* Direct Gemini Web Bridge (Uses user's own Gemini Pro web account) */}
             <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #c7e0f4', backgroundColor: '#fafcff', padding: '8px', borderRadius: '6px' }}>
