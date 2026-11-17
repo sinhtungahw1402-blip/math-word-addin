@@ -71,6 +71,22 @@
                     <SourceLocation resid="Url.Formula"/>
                   </Action>
                 </Control>
+                <Control xsi:type="Button" id="MathWordAddin.BtnDocScanner">
+                  <Label resid="Btn.DocScanner.Label"/>
+                  <Supertip>
+                    <Title resid="Btn.DocScanner.Label"/>
+                    <Description resid="Btn.DocScanner.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>MathWordAddin.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Url.DocScanner"/>
+                  </Action>
+                </Control>
               </Group>
 
               <!-- Group 2: Plane Geometry (Hình học phẳng) -->
@@ -226,6 +242,7 @@
         <bt:Url id="Taskpane.Url" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html"/>
         <bt:Url id="Url.Taskpane" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html"/>
         <bt:Url id="Url.Formula" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html?view=formula"/>
+        <bt:Url id="Url.DocScanner" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html?view=doc-scanner"/>
         <bt:Url id="Url.PlaneGeometry" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html?view=plane-geometry"/>
         <bt:Url id="Url.SpaceGeometry" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html?view=space-geometry"/>
         <bt:Url id="Url.VariationTable" DefaultValue="https://sinhtungahw1402-blip.github.io/math-word-addin/taskpane.html?view=variation-table"/>
@@ -242,6 +259,7 @@
         <bt:String id="Group.TablesGraphs.Label" DefaultValue="Bảng &amp; Đồ thị"/>
         <bt:String id="Group.Tools.Label" DefaultValue="Công cụ"/>
         <bt:String id="Btn.Formula.Label" DefaultValue="Công thức"/>
+        <bt:String id="Btn.DocScanner.Label" DefaultValue="Quét PDF/Ảnh"/>
         <bt:String id="Btn.PlaneGeometry.Label" DefaultValue="Hình học phẳng"/>
         <bt:String id="Btn.SpaceGeometry.Label" DefaultValue="Hình không gian"/>
         <bt:String id="Btn.VariationTable.Label" DefaultValue="Bảng biến thiên"/>
@@ -254,6 +272,7 @@
       <bt:LongStrings>
         <bt:String id="GetStarted.Description" DefaultValue="Mở Taskpane Toán Học để soạn thảo công thức, vẽ hình học phẳng/không gian, bảng biến thiên và đồ thị."/>
         <bt:String id="Btn.Formula.Tooltip" DefaultValue="Mở công cụ soạn thảo công thức Toán học"/>
+        <bt:String id="Btn.DocScanner.Tooltip" DefaultValue="Quét PDF và ảnh đề thi sang Word, nhận diện công thức toán và giữ nguyên hình vẽ minh họa xen kẽ"/>
         <bt:String id="Btn.PlaneGeometry.Tooltip" DefaultValue="Mở công cụ dựng hình học phẳng (tam giác, đường tròn, góc, đa giác)"/>
         <bt:String id="Btn.SpaceGeometry.Tooltip" DefaultValue="Mở công cụ vẽ hình học không gian (chóp, lăng trụ, nón, trụ, cầu)"/>
         <bt:String id="Btn.VariationTable.Tooltip" DefaultValue="Tạo bảng biến thiên xét dấu cho các hàm số toán THPT"/>

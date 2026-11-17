@@ -20,6 +20,7 @@ import {
   Table20Regular,
   DataArea20Regular,
   Grid20Regular,
+  CameraSparkles20Regular,
   CheckmarkCircle20Filled,
   Play20Filled,
   Info20Regular
@@ -31,6 +32,7 @@ import { SpaceGeometryEditor } from './components/SpaceGeometryEditor';
 import { VariationTableGenerator } from './components/VariationTableGenerator';
 import { GraphPlotter } from './components/GraphPlotter';
 import { ShapeGallery } from './components/ShapeGallery';
+import { DocScanner } from './components/DocScanner';
 import { insertHelloMath, isWordHost } from './services/wordService';
 
 const useStyles = makeStyles({
@@ -210,6 +212,9 @@ export const AppContent: React.FC = () => {
           <Tab value="formula" icon={<MathFormula20Regular />}>
             Công thức
           </Tab>
+          <Tab value="doc-scanner" icon={<CameraSparkles20Regular />}>
+            Quét PDF/Ảnh
+          </Tab>
           <Tab value="plane-geometry" icon={<Shapes20Regular />}>
             Hình phẳng
           </Tab>
@@ -231,6 +236,7 @@ export const AppContent: React.FC = () => {
       {/* Main Content Area switched directly by React State */}
       <div className={styles.contentArea}>
         {activeTab === 'formula' && <FormulaEditor />}
+        {activeTab === 'doc-scanner' && <DocScanner />}
         {activeTab === 'plane-geometry' && <PlaneGeometryEditor />}
         {activeTab === 'space-geometry' && <SpaceGeometryEditor />}
         {activeTab === 'variation-table' && <VariationTableGenerator />}
@@ -238,6 +244,7 @@ export const AppContent: React.FC = () => {
         {activeTab === 'shape-gallery' && <ShapeGallery />}
         {![
           'formula',
+          'doc-scanner',
           'plane-geometry',
           'space-geometry',
           'variation-table',

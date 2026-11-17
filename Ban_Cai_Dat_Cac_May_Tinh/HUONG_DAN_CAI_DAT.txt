@@ -1,0 +1,39 @@
+================================================================================
+          HƯỚNG DẪN CÀI ĐẶT TOÁN HỌC WORD ADD-IN CHO MỌI MÁY TÍNH
+================================================================================
+
+Để cài đặt ứng dụng này lên bất kỳ máy tính nào khác, bạn chỉ cần làm 2 BƯỚC:
+
+BƯỚC 1: CHẠY FILE CÀI ĐẶT
+--------------------------------------------------------------------------------
+- Sao chép toàn bộ thư mục "Ban_Cai_Dat_Cac_May_Tinh" sang máy tính mới (qua USB, Zalo, Google Drive,...).
+- Nhấp đúp chuột (Double click) vào file:
+      Cai_Dat_Tu_Dong_Cho_May_Khac.bat
+  
+  (*) LƯU Ý QUAN TRỌNG:
+      - Bạn chỉ cần nhấp đúp bình thường, KHÔNG CẦN chọn "Run as administrator".
+      - Màn hình đen xuất hiện và báo "HOÀN TẤT CÀI ĐẶT THÀNH CÔNG!" sau 2 giây.
+
+BƯỚC 2: MỞ MICROSOFT WORD VÀ SỬ DỤNG
+--------------------------------------------------------------------------------
+- Khởi động phần mềm Microsoft Word (nếu Word đang mở từ trước thì hãy tắt hẳn đi rồi mở lại).
+- Ngay trên thanh Ribbon của Word sẽ tự động xuất hiện tab "Toán Học" với đầy đủ:
+    1. Soạn công thức chuẩn Word Equation (OMML).
+    2. Quét PDF / Ảnh đề thi tự động sang Word (giữ nguyên hình minh họa).
+    3. Vẽ hình học phẳng (tam giác, đường tròn, góc, cạnh bằng nhau,...).
+    4. Vẽ hình không gian (chóp, lăng trụ, nón, trụ, cầu, thiết diện,...).
+    5. Tạo bảng biến thiên xét dấu.
+    6. Vẽ đồ thị hàm số.
+
+--------------------------------------------------------------------------------
+CÁCH XỬ LÝ MỘT SỐ TRƯỜNG HỢP ĐẶC BIỆT:
+--------------------------------------------------------------------------------
+1. Nếu mở Word lần đầu chưa thấy tab "Toán Học" ngay trên Ribbon:
+   - Trong Word, vào menu "Insert" (Chèn) -> chọn "My Add-ins" (hoặc "Get Add-ins").
+   - Nhấp vào tab "SHARED FOLDER" (Thư mục dùng chung).
+   - Chọn "Toán Học" rồi nhấn "Add".
+   - Từ lần sau trở đi, tab "Toán Học" sẽ luôn luôn hiển thị tự động mỗi khi bạn mở Word.
+
+2. Không cần cấu hình Trust Center thủ công:
+   - Bạn không cần phải vào "Options -> Trust Center -> Add catalog" vì file cài đặt đã tự động cấu hình Registry chuẩn xác 100% cho máy tính của bạn.
+================================================================================
