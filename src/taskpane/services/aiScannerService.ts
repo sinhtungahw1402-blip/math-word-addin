@@ -115,7 +115,11 @@ export function cropImageFromCanvas(
   box_2d: [number, number, number, number],
   padding = 6
 ): { base64: string; width: number; height: number; dataUrl: string } {
-  const [ymin, xmin, ymax, xmax] = box_2d;
+  const [y1, x1, y2, x2] = box_2d;
+  const ymin = Math.max(0, Math.min(1000, Math.min(y1, y2)));
+  const ymax = Math.max(0, Math.min(1000, Math.max(y1, y2)));
+  const xmin = Math.max(0, Math.min(1000, Math.min(x1, x2)));
+  const xmax = Math.max(0, Math.min(1000, Math.max(x1, x2)));
   const W = sourceCanvas.width;
   const H = sourceCanvas.height;
 
@@ -142,7 +146,10 @@ export function cropImageFromCanvas(
 
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, cropW, cropH);
-  ctx.drawImage(sourceCanvas, left, top, cropW, cropH, 0, 0, cropW, cropH);
+
+  const srcW = Math.min(cropW, Math.max(1, W - left));
+  const srcH = Math.min(cropH, Math.max(1, H - top));
+  ctx.drawImage(sourceCanvas, left, top, srcW, srcH, 0, 0, srcW, srcH);
 
   const dataUrl = cropCanvas.toDataURL('image/png');
   const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
@@ -432,10 +439,12 @@ export function convertMixedTextToOoxmlParagraphs(text: string): string {
               runsXml += omml;
             }
           } else {
-            runsXml += `<w:r><w:t xml:space="preserve">${token.content}</w:t></w:r>`;
+            const esc = token.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            runsXml += `<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">${esc}</w:t></w:r>`;
           }
         } catch {
-          runsXml += `<w:r><w:t xml:space="preserve">${token.content}</w:t></w:r>`;
+          const esc = token.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          runsXml += `<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">${esc}</w:t></w:r>`;
         }
       }
     }
