@@ -37,6 +37,8 @@ export interface ExtraPoint {
   line1P2?: string;
   line2P1?: string;
   line2P2?: string;
+  line1Id?: string;
+  line2Id?: string;
   ratio?: number;
   fixedPt?: Point;
   labelOffset?: { x: number; y: number };
@@ -535,17 +537,77 @@ export function getParallelEndpoints(P: Point, A: Point, B: Point, length: numbe
 /**
  * Computes endpoints of a segment passing through P and perpendicular to AB
  */
-export function getPerpendicularEndpoints(P: Point, A: Point, B: Point, length: number = 60): { p1: Point; p2: Point } {
+export function getPerpendicularEndpoints(
+  P: Point,
+  A: Point,
+  B: Point,
+  length: number = 80,
+  referencePointForInward?: Point
+): { p1: Point; p2: Point; uIn: Point } {
   const dx = B.x - A.x;
   const dy = B.y - A.y;
   const len = Math.hypot(dx, dy) || 1;
   const nx = -dy / len;
   const ny = dx / len;
-  const half = length / 2;
+
+  let inwardSign = 1;
+  if (referencePointForInward) {
+    const dot = (referencePointForInward.x - P.x) * nx + (referencePointForInward.y - P.y) * ny;
+    if (dot < 0) inwardSign = -1;
+  }
+
+  const uIn = { x: nx * inwardSign, y: ny * inwardSign };
+  const outExt = 18;
+  const inExt = Math.max(30, length - outExt);
+
   return {
-    p1: { x: P.x - nx * half, y: P.y - ny * half },
-    p2: { x: P.x + nx * half, y: P.y + ny * half }
+    p1: { x: P.x - uIn.x * outExt, y: P.y - uIn.y * outExt },
+    p2: { x: P.x + uIn.x * inExt, y: P.y + uIn.y * inExt },
+    uIn
   };
+}
+
+/**
+ * Resolves two distinct points defining a line from an ExtraLine or two point IDs
+ */
+export function resolveTwoPointsOnLine(
+  lineId?: string,
+  p1Key?: string,
+  p2Key?: string,
+  extraLines: ExtraLine[] = [],
+  pointMap: Record<string, Point> = {}
+): { p1: Point; p2: Point } | null {
+  if (lineId) {
+    const l = extraLines.find(x => x.id === lineId);
+    if (l) {
+      if ((l.type === 'segment' || l.type === 'line' || l.type === 'ray') && l.p1 && l.p2 && pointMap[l.p1] && pointMap[l.p2]) {
+        return { p1: pointMap[l.p1], p2: pointMap[l.p2] };
+      }
+      if (l.type === 'parallel' && l.p1 && l.refLineP1 && l.refLineP2 && pointMap[l.p1] && pointMap[l.refLineP1] && pointMap[l.refLineP2]) {
+        const P = pointMap[l.p1];
+        const A = pointMap[l.refLineP1];
+        const B = pointMap[l.refLineP2];
+        const dx = B.x - A.x;
+        const dy = B.y - A.y;
+        return { p1: P, p2: { x: P.x + dx, y: P.y + dy } };
+      }
+      if (l.type === 'perpendicular' && l.p1 && l.refLineP1 && l.refLineP2 && pointMap[l.p1] && pointMap[l.refLineP1] && pointMap[l.refLineP2]) {
+        const P = pointMap[l.p1];
+        const A = pointMap[l.refLineP1];
+        const B = pointMap[l.refLineP2];
+        const dx = B.x - A.x;
+        const dy = B.y - A.y;
+        const len = Math.hypot(dx, dy) || 1;
+        return { p1: P, p2: { x: P.x - (dy / len) * 50, y: P.y + (dx / len) * 50 } };
+      }
+    }
+  }
+
+  if (p1Key && p2Key && pointMap[p1Key] && pointMap[p2Key]) {
+    return { p1: pointMap[p1Key], p2: pointMap[p2Key] };
+  }
+
+  return null;
 }
 
 /**
@@ -598,8 +660,8 @@ export function renderExtraElements(
   let linesSvg = '';
   let pointsSvg = '';
 
-  // 1. Resolve Extra Points (2 passes to resolve chained geometric dependencies)
-  for (let pass = 0; pass < 2; pass++) {
+  // 1. Resolve Extra Points (4 passes to resolve chained geometric dependencies)
+  for (let pass = 0; pass < 4; pass++) {
     for (const p of extraPoints) {
       if (p.type === 'midpoint' && p.pt1 && p.pt2 && resolvedPointMap[p.pt1] && resolvedPointMap[p.pt2]) {
         resolvedPointMap[p.id] = getMidpoint(resolvedPointMap[p.pt1], resolvedPointMap[p.pt2]);
@@ -613,9 +675,13 @@ export function renderExtraElements(
         resolvedPointMap[p.id] = getIncenter(resolvedPointMap[p.pt1], resolvedPointMap[p.pt2], resolvedPointMap[p.pt3]);
       } else if (p.type === 'projection' && p.fromPt && p.ontoLineP1 && p.ontoLineP2 && resolvedPointMap[p.fromPt] && resolvedPointMap[p.ontoLineP1] && resolvedPointMap[p.ontoLineP2]) {
         resolvedPointMap[p.id] = getProjection(resolvedPointMap[p.fromPt], resolvedPointMap[p.ontoLineP1], resolvedPointMap[p.ontoLineP2]);
-      } else if (p.type === 'intersection' && p.line1P1 && p.line1P2 && p.line2P1 && p.line2P2 && resolvedPointMap[p.line1P1] && resolvedPointMap[p.line1P2] && resolvedPointMap[p.line2P1] && resolvedPointMap[p.line2P2]) {
-        const inter = getLineIntersection(resolvedPointMap[p.line1P1], resolvedPointMap[p.line1P2], resolvedPointMap[p.line2P1], resolvedPointMap[p.line2P2]);
-        if (inter) resolvedPointMap[p.id] = inter;
+      } else if (p.type === 'intersection') {
+        const line1 = resolveTwoPointsOnLine(p.line1Id, p.line1P1, p.line1P2, extraLines, resolvedPointMap);
+        const line2 = resolveTwoPointsOnLine(p.line2Id, p.line2P1, p.line2P2, extraLines, resolvedPointMap);
+        if (line1 && line2) {
+          const inter = getLineIntersection(line1.p1, line1.p2, line2.p1, line2.p2);
+          if (inter) resolvedPointMap[p.id] = inter;
+        }
       } else if (p.type === 'ratio' && p.pt1 && p.pt2 && resolvedPointMap[p.pt1] && resolvedPointMap[p.pt2]) {
         resolvedPointMap[p.id] = getRatioPoint(resolvedPointMap[p.pt1], resolvedPointMap[p.pt2], p.ratio ?? 0.5);
       } else if (p.type === 'free') {
@@ -676,9 +742,53 @@ export function renderExtraElements(
       const A = resolvedPointMap[l.refLineP1];
       const B = resolvedPointMap[l.refLineP2];
       const H = getProjection(P, A, B);
-      linesSvg += `<line x1="${P.x.toFixed(1)}" y1="${P.y.toFixed(1)}" x2="${H.x.toFixed(1)}" y2="${H.y.toFixed(1)}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
-      if (l.hasRightAngle) {
-        linesSvg += getRightAngleMark(H, P, B, 11, col) + '\n';
+      const dist = Math.hypot(P.x - H.x, P.y - H.y);
+
+      // Check if a target intersection point or explicit p2 exists on this perpendicular line
+      let targetPt: Point | null = null;
+      if (l.p2 && resolvedPointMap[l.p2]) {
+        targetPt = resolvedPointMap[l.p2];
+      } else {
+        const interPt = extraPoints.find(p => p.type === 'intersection' && (p.line1Id === l.id || p.line2Id === l.id) && resolvedPointMap[p.id]);
+        if (interPt) {
+          targetPt = resolvedPointMap[interPt.id];
+        }
+      }
+
+      if (dist < 2.5) {
+        // Point P is ON the line AB (e.g. M is on AB)
+        const refOther = Object.keys(resolvedPointMap)
+          .filter(k => k !== l.p1 && k !== l.refLineP1 && k !== l.refLineP2)
+          .map(k => resolvedPointMap[k])[0];
+        const refB = Math.hypot(B.x - P.x, B.y - P.y) > 5 ? B : A;
+
+        if (targetPt) {
+          // Connected to an intersection point (e.g. N on AC)
+          const ext = getExtendedEndpoints(P, targetPt, 12, 12);
+          linesSvg += `<line x1="${ext.start.x.toFixed(1)}" y1="${ext.start.y.toFixed(1)}" x2="${ext.end.x.toFixed(1)}" y2="${ext.end.y.toFixed(1)}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+          if (l.hasRightAngle) {
+            linesSvg += getRightAngleMark(P, targetPt, refB, 11, col) + '\n';
+          }
+        } else {
+          // General perpendicular line passing through P
+          const ends = getPerpendicularEndpoints(P, A, B, l.length || 85, refOther);
+          linesSvg += `<line x1="${ends.p1.x.toFixed(1)}" y1="${ends.p1.y.toFixed(1)}" x2="${ends.p2.x.toFixed(1)}" y2="${ends.p2.y.toFixed(1)}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+          if (l.hasRightAngle) {
+            linesSvg += getRightAngleMark(P, ends.p2, refB, 11, col) + '\n';
+          }
+        }
+      } else {
+        // Point P is NOT on line AB (e.g. altitude from C to AB)
+        const refB = Math.hypot(B.x - H.x, B.y - H.y) > 5 ? B : A;
+        if (targetPt) {
+          const ext = getExtendedEndpoints(P, targetPt, 10, 10);
+          linesSvg += `<line x1="${ext.start.x.toFixed(1)}" y1="${ext.start.y.toFixed(1)}" x2="${ext.end.x.toFixed(1)}" y2="${ext.end.y.toFixed(1)}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+        } else {
+          linesSvg += `<line x1="${P.x.toFixed(1)}" y1="${P.y.toFixed(1)}" x2="${H.x.toFixed(1)}" y2="${H.y.toFixed(1)}" stroke="${col}" stroke-width="${sw}" ${dashAttr} />\n`;
+        }
+        if (l.hasRightAngle) {
+          linesSvg += getRightAngleMark(H, P, refB, 11, col) + '\n';
+        }
       }
     }
   }

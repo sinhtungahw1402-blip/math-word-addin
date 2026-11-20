@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Text,
   Button,
@@ -128,8 +128,8 @@ export const GeometryCustomElementsCard: React.FC<GeometryCustomElementsCardProp
 }) => {
   const styles = useStyles();
 
-  // Active form mode: null | 'point' | 'line' | 'shape'
-  const [activeForm, setActiveForm] = useState<'point' | 'line' | 'shape' | null>(null);
+  // Active form mode: null | 'point' | 'intersection' | 'line' | 'shape'
+  const [activeForm, setActiveForm] = useState<'point' | 'intersection' | 'line' | 'shape' | null>(null);
 
   // Default selectable point keys
   const defaultP1 = availablePoints[0]?.id || 'A';
@@ -152,6 +152,17 @@ export const GeometryCustomElementsCard: React.FC<GeometryCustomElementsCardProp
   const [ptRatio, setPtRatio] = useState<number>(0.5);
   const [ptColor, setPtColor] = useState<string>('#d13438');
 
+  // Dedicated Intersection Form State
+  const [interLabel, setInterLabel] = useState<string>('N');
+  const [interColor, setInterColor] = useState<string>('#d13438');
+  const [interMode, setInterMode] = useState<'existing_lines' | 'two_points'>('existing_lines');
+  const [interLine1Key, setInterLine1Key] = useState<string>('');
+  const [interLine2Key, setInterLine2Key] = useState<string>('');
+  const [interP1, setInterP1] = useState<string>(defaultP1);
+  const [interP2, setInterP2] = useState<string>(defaultP2);
+  const [interP3, setInterP3] = useState<string>(defaultP3);
+  const [interP4, setInterP4] = useState<string>(availablePoints[3]?.id || defaultP1);
+
   // Line Form State
   const [lineType, setLineType] = useState<ExtraLineType>('segment');
   const [lineP1, setLineP1] = useState<string>(defaultP1);
@@ -160,6 +171,7 @@ export const GeometryCustomElementsCard: React.FC<GeometryCustomElementsCardProp
   const [lineRefP2, setLineRefP2] = useState<string>(defaultP3);
   const [lineStyle, setLineStyle] = useState<'solid' | 'dashed'>(is3D ? 'dashed' : 'solid');
   const [lineColor, setLineColor] = useState<string>('#d13438');
+  const [lineLength, setLineLength] = useState<number>(85);
   const [lineRightAngle, setLineRightAngle] = useState<boolean>(true);
 
   // Shape Form State
@@ -175,6 +187,38 @@ export const GeometryCustomElementsCard: React.FC<GeometryCustomElementsCardProp
 
   const totalElements = extraPoints.length + extraLines.length + extraShapes.length;
 
+  // Available lines across the figure (base shape edges + user-drawn lines)
+  const availableLineItems = useMemo(() => {
+    const items: { id: string; label: string; p1?: string; p2?: string; lineId?: string }[] = [];
+    // 1. Base shape edges
+    for (let i = 0; i < availablePoints.length; i++) {
+      for (let j = i + 1; j < availablePoints.length; j++) {
+        const pA = availablePoints[i];
+        const pB = availablePoints[j];
+        items.push({
+          id: `edge_${pA.id}_${pB.id}`,
+          label: `Cạnh / Đoạn ${pA.label}${pB.label}`,
+          p1: pA.id,
+          p2: pB.id
+        });
+      }
+    }
+    // 2. Extra lines added by user
+    for (const l of extraLines) {
+      let desc = '';
+      if (l.type === 'segment') desc = `Đoạn thẳng ${l.p1}${l.p2}`;
+      else if (l.type === 'line') desc = `Đường thẳng qua ${l.p1}, ${l.p2}`;
+      else if (l.type === 'parallel') desc = `Đường qua ${l.p1} // ${l.refLineP1}${l.refLineP2}`;
+      else if (l.type === 'perpendicular') desc = `Đường qua ${l.p1} ⊥ ${l.refLineP1}${l.refLineP2}`;
+      items.push({
+        id: `line_${l.id}`,
+        label: desc,
+        lineId: l.id
+      });
+    }
+    return items;
+  }, [availablePoints, extraLines]);
+
   // Auto increment point label
   const suggestNextLabel = () => {
     const commonLabels = ['M', 'N', 'P', 'Q', 'I', 'K', 'H', 'G', 'E', 'F', 'J', 'O'];
@@ -188,6 +232,18 @@ export const GeometryCustomElementsCard: React.FC<GeometryCustomElementsCardProp
   const handleOpenPointForm = () => {
     setPtLabel(suggestNextLabel());
     setActiveForm('point');
+  };
+
+  const handleOpenIntersectionForm = () => {
+    setInterLabel(suggestNextLabel());
+    if (availableLineItems.length >= 2) {
+      const extraItem = availableLineItems.find(x => x.lineId);
+      const firstId = extraItem ? extraItem.id : availableLineItems[0].id;
+      setInterLine1Key(firstId);
+      const secondItem = availableLineItems.find(x => x.id !== firstId);
+      if (secondItem) setInterLine2Key(secondItem.id);
+    }
+    setActiveForm('intersection');
   };
 
   const handleCreatePoint = () => {
@@ -215,6 +271,46 @@ export const GeometryCustomElementsCard: React.FC<GeometryCustomElementsCardProp
     setActiveForm(null);
   };
 
+  const handleCreateIntersection = () => {
+    const id = `pt_${Date.now()}`;
+    const cleanLabel = interLabel.trim() || suggestNextLabel();
+
+    let newPt: ExtraPoint;
+    if (interMode === 'existing_lines') {
+      const l1Item = availableLineItems.find(x => x.id === interLine1Key);
+      const l2Item = availableLineItems.find(x => x.id === interLine2Key);
+
+      newPt = {
+        id,
+        label: cleanLabel,
+        type: 'intersection',
+        color: interColor,
+        line1Id: l1Item?.lineId,
+        line1P1: l1Item?.p1,
+        line1P2: l1Item?.p2,
+        line2Id: l2Item?.lineId,
+        line2P1: l2Item?.p1,
+        line2P2: l2Item?.p2,
+        labelOffset: { x: 7, y: -7 }
+      };
+    } else {
+      newPt = {
+        id,
+        label: cleanLabel,
+        type: 'intersection',
+        color: interColor,
+        line1P1: interP1,
+        line1P2: interP2,
+        line2P1: interP3,
+        line2P2: interP4,
+        labelOffset: { x: 7, y: -7 }
+      };
+    }
+
+    onAddPoint(newPt);
+    setActiveForm(null);
+  };
+
   const handleCreateLine = () => {
     const id = `line_${Date.now()}`;
     const newLine: ExtraLine = {
@@ -227,6 +323,7 @@ export const GeometryCustomElementsCard: React.FC<GeometryCustomElementsCardProp
       style: lineStyle,
       color: lineColor,
       strokeWidth: 1.8,
+      length: lineLength,
       hasRightAngle: lineRightAngle
     };
     onAddLine(newLine);
@@ -305,6 +402,16 @@ export const GeometryCustomElementsCard: React.FC<GeometryCustomElementsCardProp
             onClick={() => setActiveForm(activeForm === 'line' ? null : 'line')}
           >
             + Kẻ đoạn / đường thẳng
+          </Button>
+
+          <Button
+            size="small"
+            appearance={activeForm === 'intersection' ? 'primary' : 'outline'}
+            icon={<Add20Regular />}
+            onClick={() => (activeForm === 'intersection' ? setActiveForm(null) : handleOpenIntersectionForm())}
+            style={{ fontWeight: 600 }}
+          >
+            + Giao điểm 2 đường
           </Button>
 
           <Button
@@ -492,6 +599,90 @@ export const GeometryCustomElementsCard: React.FC<GeometryCustomElementsCardProp
           </div>
         )}
 
+        {/* ---------------- 1b. FORM TÌM & VẼ GIAO ĐIỂM 2 ĐƯỜNG ---------------- */}
+        {activeForm === 'intersection' && (
+          <div className={styles.formBox}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text weight="bold" size={300} style={{ color: '#0f6cbd' }}>
+                ✖ Tìm &amp; vẽ giao điểm của 2 đường thẳng
+              </Text>
+              <Button size="small" appearance="subtle" icon={<Dismiss20Regular />} onClick={() => setActiveForm(null)} />
+            </div>
+
+            <div className={styles.grid2}>
+              <Field label="Tên điểm giao (Nhãn)" size="small">
+                <Input value={interLabel} onChange={(_, d) => setInterLabel(d.value)} style={{ width: '80px' }} />
+              </Field>
+
+              <Field label="Màu sắc điểm" size="small">
+                <Select value={interColor} onChange={(_, d) => setInterColor(d.value)}>
+                  {COLOR_PALETTE.map(c => (
+                    <option key={c.hex} value={c.hex}>{c.label}</option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+
+            <Field label="Cách chọn 2 đường thẳng" size="small">
+              <Select value={interMode} onChange={(_, d) => setInterMode(d.value as any)}>
+                <option value="existing_lines">1. Chọn trực tiếp từ các cạnh &amp; đường đã vẽ (Dễ nhất)</option>
+                <option value="two_points">2. Chọn thủ công qua 4 điểm (Đường 1 qua 2 điểm, Đường 2 qua 2 điểm)</option>
+              </Select>
+            </Field>
+
+            {interMode === 'existing_lines' ? (
+              <div className={styles.grid2}>
+                <Field label="Đường thẳng thứ nhất" size="small">
+                  <Select value={interLine1Key} onChange={(_, d) => setInterLine1Key(d.value)}>
+                    {availableLineItems.map(item => (
+                      <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Đường thẳng thứ hai" size="small">
+                  <Select value={interLine2Key} onChange={(_, d) => setInterLine2Key(d.value)}>
+                    {availableLineItems.map(item => (
+                      <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+            ) : (
+              <div className={styles.grid2}>
+                <div>
+                  <Text size={200} weight="semibold">Đường 1 qua 2 điểm:</Text>
+                  <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                    <Select value={interP1} onChange={(_, d) => setInterP1(d.value)}>
+                      {availablePoints.map(p => (<option key={p.id} value={p.id}>{p.label}</option>))}
+                    </Select>
+                    <Select value={interP2} onChange={(_, d) => setInterP2(d.value)}>
+                      {availablePoints.map(p => (<option key={p.id} value={p.id}>{p.label}</option>))}
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <Text size={200} weight="semibold">Đường 2 qua 2 điểm:</Text>
+                  <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                    <Select value={interP3} onChange={(_, d) => setInterP3(d.value)}>
+                      {availablePoints.map(p => (<option key={p.id} value={p.id}>{p.label}</option>))}
+                    </Select>
+                    <Select value={interP4} onChange={(_, d) => setInterP4(d.value)}>
+                      {availablePoints.map(p => (<option key={p.id} value={p.id}>{p.label}</option>))}
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '4px' }}>
+              <Button size="small" appearance="subtle" onClick={() => setActiveForm(null)}>Hủy</Button>
+              <Button size="small" appearance="primary" icon={<Checkmark20Regular />} onClick={handleCreateIntersection}>
+                Tạo giao điểm {interLabel}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* ---------------- 2. FORM KẺ ĐOẠN / ĐƯỜNG THẲNG ---------------- */}
         {activeForm === 'line' && (
           <div className={styles.formBox}>
@@ -563,16 +754,27 @@ export const GeometryCustomElementsCard: React.FC<GeometryCustomElementsCardProp
                 </Select>
               </Field>
 
-              {lineType === 'perpendicular' && (
-                <div style={{ display: 'flex', alignItems: 'center', marginTop: '18px' }}>
-                  <Switch
-                    checked={lineRightAngle}
-                    onChange={(_, d) => setLineRightAngle(d.checked)}
-                    label="Vẽ ký hiệu góc vuông (∟)"
-                  />
-                </div>
+              {(lineType === 'parallel' || lineType === 'perpendicular') && (
+                <Field label="Độ dài đường vẽ" size="small">
+                  <Select value={String(lineLength)} onChange={(_, d) => setLineLength(Number(d.value) || 85)}>
+                    <option value="60">Ngắn (60px)</option>
+                    <option value="85">Vừa phải (85px - Khuyên dùng)</option>
+                    <option value="120">Dài (120px)</option>
+                    <option value="160">Rất dài (160px)</option>
+                  </Select>
+                </Field>
               )}
             </div>
+
+            {lineType === 'perpendicular' && (
+              <div style={{ display: 'flex', alignItems: 'center', marginTop: '4px', marginBottom: '4px' }}>
+                <Switch
+                  checked={lineRightAngle}
+                  onChange={(_, d) => setLineRightAngle(d.checked)}
+                  label="Vẽ ký hiệu góc vuông (∟)"
+                />
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '4px' }}>
               <Button size="small" appearance="subtle" onClick={() => setActiveForm(null)}>Hủy</Button>
@@ -705,7 +907,17 @@ export const GeometryCustomElementsCard: React.FC<GeometryCustomElementsCardProp
               else if (p.type === 'incenter') desc = `Tâm nội tiếp ${p.pt1}${p.pt2}${p.pt3}`;
               else if (p.type === 'projection') desc = `Hình chiếu từ ${p.fromPt} ⊥ ${p.ontoLineP1}${p.ontoLineP2}`;
               else if (p.type === 'ratio') desc = `Điểm trên ${p.pt1}${p.pt2} (tỉ lệ ${p.ratio})`;
-              else if (p.type === 'intersection') desc = `Giao điểm ${p.line1P1}${p.line1P2} ∩ ${p.line2P1}${p.line2P2}`;
+              else if (p.type === 'intersection') {
+                if (p.line1Id || p.line2Id) {
+                  const l1 = extraLines.find(x => x.id === p.line1Id);
+                  const l2 = extraLines.find(x => x.id === p.line2Id);
+                  const l1Name = l1 ? (l1.type === 'perpendicular' ? `(Đường qua ${l1.p1} ⊥ ${l1.refLineP1}${l1.refLineP2})` : `(Đường qua ${l1.p1} // ${l1.refLineP1}${l1.refLineP2})`) : (p.line1P1 && p.line1P2 ? `${p.line1P1}${p.line1P2}` : 'Đường 1');
+                  const l2Name = l2 ? (l2.type === 'perpendicular' ? `(Đường qua ${l2.p1} ⊥ ${l2.refLineP1}${l2.refLineP2})` : `(Đường qua ${l2.p1} // ${l2.refLineP1}${l2.refLineP2})`) : (p.line2P1 && p.line2P2 ? `${p.line2P1}${p.line2P2}` : 'Đường 2');
+                  desc = `Giao điểm ${l1Name} ∩ ${l2Name}`;
+                } else {
+                  desc = `Giao điểm ${p.line1P1}${p.line1P2} ∩ ${p.line2P1}${p.line2P2}`;
+                }
+              }
               else desc = 'Điểm tự do';
 
               return (
